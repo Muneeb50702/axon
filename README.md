@@ -22,8 +22,20 @@ Verified traces are then **compiled into deterministic replayable skills**, so
 repeated tasks drop from *N* model calls to zero and the system gets faster the
 more it is used.
 
-Full specification: [`PROJECT_AXON_FYP_SPEC.md`](PROJECT_AXON_FYP_SPEC.md).
-Deviations from it, with evidence: [`docs/DECISIONS.md`](docs/DECISIONS.md).
+### Documentation
+
+| file | what it is |
+|---|---|
+| [`PROJECT_AXON_FYP_SPEC.md`](PROJECT_AXON_FYP_SPEC.md) | the full specification |
+| [`docs/DECISIONS.md`](docs/DECISIONS.md) | every deviation from the spec, with evidence and how to reverse it |
+| [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md) | every measurement, with the exact configuration that produced it |
+| [`docs/PHASE1.md`](docs/PHASE1.md) | Phase 1 walkthrough and defence preparation |
+| [`docs/paper/OUTLINE.md`](docs/paper/OUTLINE.md) | paper structure, claims mapped to the experiments that support them |
+
+A number that cannot be traced to an entry in `EXPERIMENTS.md` does not go in the
+paper. That rule exists because of decision D9: an unoptimised native build made
+every latency figure wrong by more than an order of magnitude, silently, while
+looking entirely plausible.
 
 ---
 

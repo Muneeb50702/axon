@@ -110,7 +110,17 @@ class Phase1AcceptanceTest {
      */
     @Test
     fun t04_constrainedGenerationsAreAllSchemaValid() = runBlocking {
-        val cases = ScreenCorpus.sample(samples)
+        // A slice of the corpus, not all of it.
+        //
+        // TECNO's Griffin memory manager SIGKILLs this process after roughly
+        // seven minutes of sustained load, foreground status notwithstanding —
+        // twice, reproducibly. At ~50 s per case for two arms that caps a single
+        // invocation at about four cases, so the run is chunked and the host
+        // aggregates. Fighting the OEM killer is not winnable; producing data it
+        // cannot destroy is.
+        val all = ScreenCorpus.sample(samples)
+        val cases = all.drop(offset).take(chunk)
+        Log.i(TAG, "chunk: offset=$offset size=${cases.size} of ${all.size}")
         val constrained = mutableListOf<Observation>()
         val unconstrained = mutableListOf<Observation>()
 
@@ -135,10 +145,14 @@ class Phase1AcceptanceTest {
             // sustained CPU load, and TECNO's OEM memory manager has already
             // SIGKILLed this process once mid-run. Per-case logging means a kill
             // costs the remaining cases, not the whole run's data.
-            Log.i(TAG, "[${i + 1}/${cases.size}] ${case.id} " +
-                "B(grammar)=${constrained.count { it.valid }}/${constrained.size} " +
-                "A(naive)=${unconstrained.count { it.valid }}/${unconstrained.size} " +
-                "lastMs=${constrained.last().latencyMs}")
+            // One machine-parseable line per observation, emitted immediately.
+            // tools/aggregate-acceptance.py folds these into the final table, so
+            // results survive a mid-run kill.
+            Log.i(TAG, constrained.last().record("B_grammar"))
+            Log.i(TAG, unconstrained.last().record("A_naive"))
+            Log.i(TAG, "[${offset + i + 1}/${all.size}] ${case.id} " +
+                "B=${constrained.count { it.valid }}/${constrained.size} " +
+                "A=${unconstrained.count { it.valid }}/${unconstrained.size}")
         }
 
         val report = Report(
@@ -292,7 +306,13 @@ class Phase1AcceptanceTest {
         val completionTokens: Int,
         val truncated: Boolean,
         val thermal: ThermalState,
-    )
+    ) {
+        /** Pipe-delimited record for host-side aggregation. */
+        fun record(arm: String): String = listOf(
+            "RECORD", arm, caseId, valid, latencyMs, prefillMs, decodeMs,
+            grammarMs, promptTokens, completionTokens, truncated, thermal,
+        ).joinToString("|")
+    }
 
     /** One ablation arm's aggregate (§14.2 metrics). */
     @kotlinx.serialization.Serializable
@@ -403,6 +423,16 @@ class Phase1AcceptanceTest {
         private val samples: Int
             get() = InstrumentationRegistry.getArguments()
                 .getString("axonSamples")?.toIntOrNull() ?: 24
+
+        /** First corpus index this invocation handles. */
+        private val offset: Int
+            get() = InstrumentationRegistry.getArguments()
+                .getString("axonOffset")?.toIntOrNull() ?: 0
+
+        /** How many cases this invocation handles before exiting cleanly. */
+        private val chunk: Int
+            get() = InstrumentationRegistry.getArguments()
+                .getString("axonChunk")?.toIntOrNull() ?: 4
 
         /**
          * Planner model for configs A–D, per decision D10.
