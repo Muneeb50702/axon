@@ -243,3 +243,82 @@ side-loaded, or fetched by a separate, clearly-scoped downloader component that
 the agent paths do not link against. Chosen knowingly: an `INTERNET` permission
 added "just for the model download" would silently be available to every code
 path in the process, and the guarantee would be gone.
+
+---
+
+## D8 — Vulkan is a measurement, not a default, on the target device
+
+*Date: 2026-08-11. Affects: §18, §7.3, §14.2.*
+
+**Spec.** §18 gives the build flags as *"verified"*: `arm64-v8a`,
+`-DANDROID_PLATFORM=android-26`, `-DLLAMA_VULKAN=ON`, `-DBUILD_SHARED_LIBS=ON`.
+§11 likewise lists Vulkan acceleration as a reason for choosing llama.cpp.
+
+**Found.** The primary test device is a **TECNO Camon 20 (CK6n)**, profiled
+2026-08-11 over ADB:
+
+| | |
+|---|---|
+| SoC | MediaTek Helio G85 (`MT6769`) |
+| CPU | 2× Cortex-A75 @ 2.0 GHz + 6× Cortex-A55 @ 1.8 GHz |
+| ISA | ARMv8.2-A with `asimddp` (dot product). **No** `i8mm`, no SVE |
+| GPU | Mali-G52 MC2, OpenGL ES 3.2, driver `r32p1` |
+| RAM | 7.9 GB total, ~4.3 GB available |
+| OS | Android 14, API 34, arm64-v8a |
+
+Two things follow, pulling in opposite directions:
+
+- **The CPU path is in good shape.** `asimddp` is exactly what llama.cpp's
+  Q4_K kernels use, so the quantisation choice in §7.3 is well matched to this
+  silicon.
+- **The GPU path is doubtful.** Mali-G52 MC2 is a two-core mid-range GPU, and
+  `r32p1` is a driver from around 2021. llama.cpp's Vulkan backend on mid-range
+  Mali is commonly *slower* than the CPU backend and has a history of
+  correctness problems on drivers of that vintage. Turning it on because §18
+  says so would risk shipping a configuration that is both slower and wrong.
+
+**Did.** Treat the backend as an empirical question rather than a setting.
+Phase 1 builds llama.cpp **twice** — CPU-only and Vulkan — and runs the same
+prompt corpus through both, comparing prefill throughput, decode throughput,
+correctness of grammar-constrained output, and thermal behaviour. The engine
+selects its backend from that measurement, with the CPU build as the default if
+Vulkan does not clearly win.
+
+**Why this is worth the extra work.** §14.2 already reports latency and thermal
+ceiling as metrics, so the comparison is not a detour — it is one of the results
+tables, and it is a more interesting one than a number taken on faith. It also
+directly addresses §18's own warning: *"Don't only demo on a flagship; the whole
+point is cheap phones."* A backend chosen by measurement on a ~$150 handset is a
+finding; a build flag copied from a spec is not.
+
+**Undo.** A single CMake flag, plus the engine's backend selection. Nothing above
+`InferenceEngine` (§9.3) is aware of which build is loaded.
+
+### The consequence that shapes the project
+
+On 2× A75, prefill dominates. A rendered `CompactState` for a busy screen is
+several hundred tokens, and every planning step re-processes a prompt of that
+size. Phase 1 will produce the real numbers, but the cold PLAN path on this
+device is expected to be **tens of seconds per step**, not the sub-second figures
+a flagship would give.
+
+That is not a problem to hide; it is the argument. §17's demo advice — *"Lead the
+live demo with a replayed compiled skill (near-instant) to show the 'gets faster
+with use' payoff"* — stops being presentation tactics and becomes the thesis:
+
+> On a $150 phone, a cold LLM-planned task costs tens of seconds per step. The
+> same task, once compiled to a skill, replays deterministically with **zero**
+> model calls in milliseconds. The gap between those two numbers is exactly what
+> contribution C1 buys, and it is widest on precisely the low-end hardware the
+> project exists to serve.
+
+A flagship would have made C1 look like an optimisation. This device makes it
+look necessary. Three mitigations follow directly and are Phase 1/3 work:
+
+1. **KV-cache prefix reuse.** Structure the planner prompt as a stable prefix
+   (system instructions + goal) followed by a volatile suffix (the screen), so
+   only the changed tail is prefilled each step.
+2. **Re-tune `CompactState.MAX_NODES`** (currently 40) against measured prefill
+   cost rather than against a token-budget guess.
+3. **Router model for cheap steps**, per §11 — a sub-1B model to classify intent
+   and match skills before the planner is ever invoked.
