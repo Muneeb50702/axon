@@ -1,0 +1,11 @@
+{
+  "id": "whatsapp_send",
+  "name": "Send a WhatsApp message",
+  "goal_pattern": "send {message} to {contact} on whatsapp",
+  "parameters": [
+    { "name": "contact", "type": "contact_name", "required": true },
+    { "name": "message", "type": "string", "required": true }
+  ],
+  "required_capabilities": ["contacts:read", "whatsapp:send", "ui:observe", "ui:gesture", "app:launch"],
+  "version": 1
+}

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  An axon: a cell body with a signal travelling down it to the terminals.
+  Drawn inside the 72dp adaptive-icon safe zone of the 108dp canvas.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- soma -->
+    <path
+        android:fillColor="#7DD3FC"
+        android:pathData="M34,54 m-11,0 a11,11 0 1,0 22,0 a11,11 0 1,0 -22,0" />
+
+    <!-- dendrites -->
+    <path
+        android:strokeColor="#7DD3FC"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M26,46 L18,38 M26,62 L18,70 M23,54 L14,54" />
+
+    <!-- axon -->
+    <path
+        android:strokeColor="#38BDF8"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="M45,54 L78,54" />
+
+    <!-- terminals -->
+    <path
+        android:strokeColor="#38BDF8"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M78,54 L88,44 M78,54 L88,64" />
+
+    <!-- travelling signal -->
+    <path
+        android:fillColor="#FDE047"
+        android:pathData="M60,54 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0" />
+</vector>

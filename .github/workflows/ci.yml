@@ -1,0 +1,80 @@
+name: CI
+
+# Spec §13 Phase 0 requires CI. What it can meaningfully check is set by the
+# architecture: because :core has no Android dependency, the reliability core,
+# the action grammar, the §16 safety policy and the shipped skill manifests all
+# verify on a plain JVM runner with no device and no emulator.
+#
+# That is the same property that lets AXON-Bench (§14) be reproducible by
+# someone who does not own the handset.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    name: Core contracts, grammar and safety policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # §10 schemas, §10.6 grammar/model correspondence, §16 credential refusal.
+      - name: Core tests
+        run: ./gradlew :core:jvmTest --stacktrace
+
+      # §6.2 / O5: every shipped skill folder must validate. Catches manifest
+      # typos that would otherwise surface on a phone as "the agent ignores me".
+      - name: Shipped skill manifests
+        run: ./gradlew :bench:test --stacktrace
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            core/build/reports/tests/
+            bench/build/reports/tests/
+          retention-days: 14
+
+  android:
+    name: Android app assembles
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # Phase 0 acceptance (§13): "project builds; interfaces compile; empty app
+      # launches." The first two are checked here; launching is verified on a
+      # device, since an emulator cannot exercise the accessibility substrate the
+      # project is actually about.
+      - name: Assemble debug APK
+        run: ./gradlew :android:app:assembleDebug --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: axon-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          retention-days: 14

@@ -1,0 +1,10 @@
+{
+  "id": "phone_call",
+  "name": "Call a contact",
+  "goal_pattern": "call {contact}",
+  "parameters": [
+    { "name": "contact", "type": "contact_name", "required": true }
+  ],
+  "required_capabilities": ["contacts:read", "phone:call", "ui:observe", "ui:gesture", "app:launch"],
+  "version": 1
+}

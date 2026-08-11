@@ -1,0 +1,11 @@
+{
+  "id": "set_alarm",
+  "name": "Set an alarm",
+  "goal_pattern": "set an alarm for {time}",
+  "parameters": [
+    { "name": "time", "type": "time", "required": true },
+    { "name": "label", "type": "string", "required": false }
+  ],
+  "required_capabilities": ["ui:observe", "ui:gesture", "app:launch"],
+  "version": 1
+}

@@ -1,0 +1,10 @@
+{
+  "id": "maps_navigate",
+  "name": "Navigate to a place",
+  "goal_pattern": "navigate to {place}",
+  "parameters": [
+    { "name": "place", "type": "place", "required": true }
+  ],
+  "required_capabilities": ["ui:observe", "ui:gesture", "app:launch"],
+  "version": 1
+}

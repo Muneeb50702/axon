@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      Spec §16, guardrail 1: "Visible, user-initiated, foreground operation only.
+      The agent runs as a foreground service with a persistent notification. No
+      covert/background operation. No hiding the service."
+
+      FOREGROUND_SERVICE_SPECIAL_USE is the correct type: AXON is not media,
+      location or sync. Android requires a declared justification for it, given
+      below, which is exactly the kind of visible accountability §16 asks for.
+
+      Note what is NOT requested here, and deliberately so (§6.3, §16):
+        • no INTERNET — enforced architecturally, not by policy. The perception
+          and planner paths physically cannot exfiltrate screen contents because
+          the app has no network permission at all. That turns "we don't upload
+          your screen" from a promise into a property an examiner can verify from
+          the manifest.
+        • no RECEIVE_SMS / READ_SMS, no ACCESS_BACKGROUND_LOCATION, no
+          QUERY_ALL_PACKAGES — the stalkerware-adjacent set.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Axon">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          The gateway (§7.9): a foreground service other clients talk to, which
+          is what makes AXON "a service, not an app". Wired in Phase 6; declared
+          here so the permission model and the notification are in place from the
+          start rather than retrofitted onto a working agent.
+        -->
+        <service
+            android:name=".gateway.AxonGatewayService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="On-device accessibility agent performing user-requested
+                    device tasks. Runs only while a task is in progress and shows a
+                    persistent notification for its entire lifetime." />
+        </service>
+
+    </application>
+
+</manifest>

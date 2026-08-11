@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AXON</string>
+    <string name="tagline">On-device agentic runtime</string>
+
+    <!--
+      §16 requires the agent's operation to be visible at all times. This is the
+      persistent notification text, written to say plainly what is happening —
+      not a generic "app is running" that a user would learn to ignore.
+    -->
+    <string name="gateway_channel_name">AXON agent activity</string>
+    <string name="gateway_channel_description">Shown whenever AXON is operating your device.</string>
+    <string name="gateway_running">AXON is operating your device</string>
+    <string name="gateway_idle">AXON is ready</string>
+</resources>

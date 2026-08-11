@@ -1,0 +1,22 @@
+.gradle/
+build/
+*/build/
+*/*/build/
+local.properties
+.idea/
+*.iml
+.kotlin/
+.DS_Store
+
+# Model weights (§7.3). Multi-GB GGUF files are fetched by tools/fetch-model.sh,
+# never committed — a repo an examiner can clone in under a minute matters more
+# than one that is self-contained.
+models/
+*.gguf
+
+# llama.cpp is vendored as a submodule in Phase 1, not as copied sources.
+android/inference/src/main/cpp/llama.cpp/
+
+# Generated evaluation output (§14). Results are reproduced by running the
+# harness; committing them would let a stale table outlive the code that made it.
+bench/results/
