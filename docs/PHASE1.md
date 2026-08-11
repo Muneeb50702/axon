@@ -14,6 +14,14 @@ Spec reference: §7.3 (inference engine), §7.4 (planner/constrained decoding),
 One thing: **that a small model running entirely on a cheap phone can be made
 incapable of emitting a malformed action.** Not unlikely to — incapable.
 
+> **Framing note, added after the literature check.** Trace-to-skill compilation
+> (the spec's C1) is an active 2026 area with a direct Android precedent —
+> [SkillDroid](https://arxiv.org/abs/2604.14872). Those systems call cloud-scale
+> models, which do not have the malformed-output problem a 1B model has, so
+> constrained decoding is what makes the small-model regime workable at all.
+> That makes C3 the cleaner novelty for this project, and Phase 1 the phase that
+> carries it. See [`RELATED_WORK.md`](RELATED_WORK.md).
+
 That is the whole of C3, and it is the foundation the rest of AXON stands on. The
 executor's precondition gate and the verifier both assume they are handed a
 well-formed action; if the planner could emit `{"action": "click the send
@@ -228,6 +236,30 @@ Sample output, valid and compact:
 {"action":"tap","target":{"by":"content_desc","value":"Ammi"},
  "expect":{"type":"app_foreground","value":"com.whatsapp"}}
 ```
+
+### The first ablation attempt was void — and why that matters
+
+A 24-screen A/B run returned 100% valid under grammar and 0% without, which
+looks decisive and is not usable. Arm A's mean output was **2.4 tokens**;
+printing the text showed it emitting the single word `tap` and stopping.
+
+The cause was in the prompt, not the model. `PlannerPrompt.SYSTEM` never said the
+output should be JSON — it ended with "answer with the action only" — so the
+constrained arm was succeeding on structure the prompt had failed to request.
+The experiment measured *grammar versus a forgetful prompt*.
+
+The prompt now describes the output format, with worked examples, for **both**
+arms; only arm B additionally receives the grammar. Expect a smaller and real
+gap. Recorded as void in [`EXPERIMENTS.md`](EXPERIMENTS.md) E4, superseded by
+E4b.
+
+> **Likely question — "Isn't describing the format in the prompt the same as
+> injecting the grammar, which §7.4 forbids?"**
+> No. §7.4 forbids pasting the GBNF, because a grammar is a *decoding* constraint
+> and belongs at the sampler. Telling the model what an action looks like is
+> ordinary prompting, both arms receive it identically, and the ablation then
+> measures what the grammar adds *over a well-specified prompt* — which is the
+> only version of the claim worth defending.
 
 ---
 

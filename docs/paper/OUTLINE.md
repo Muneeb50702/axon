@@ -19,13 +19,23 @@ during writing.
 > a substantially larger unconstrained model on task success — and on repeated
 > tasks approaches zero model invocations through trace-to-skill compilation.
 
-Two things make this publishable rather than an engineering report:
+**Revised after the literature check** (`docs/RELATED_WORK.md`). The original
+framing rested on trace-to-skill compilation being novel; it is not — see
+[SkillDroid](https://arxiv.org/abs/2604.14872) and the 2026 cluster around it.
+What remains, and is defensible:
 
-1. **Trace-to-skill compilation (C1)** is genuinely novel — no existing on-device
-   agent compiles a verified trace into a deterministic replayable skill.
-2. **It is measured, on hardware the field usually ignores.** Most on-device
-   agent work runs on flagships or emulators. Every number here comes from a
-   ~$150 Helio G85 handset, which is the population §2.1 is actually about.
+1. **Constrained decoding is what makes the small-model regime workable.**
+   Existing skill-compiling GUI agents call cloud-scale models and therefore
+   never face the malformed-output problem. A 1B model does, and a formal action
+   grammar removes it by construction.
+2. **Skill compilation is a viability mechanism here, not an optimisation.**
+   Cloud replay saves a round-trip; offline replay is the difference between a
+   six-step task taking six minutes and taking milliseconds.
+3. **It is measured, on hardware the field ignores.** Every number comes from a
+   ~$150 Helio G85 handset — the population §2.1 is about, and one whose OEM
+   power management actively fights sustained agent workloads.
+4. **Half the evaluation reproduces without the handset**, because the
+   reliability core carries no Android dependency.
 
 ---
 
@@ -69,7 +79,7 @@ others cannot:
 | precondition gate | names something absent — *wrong world* | before acting | — |
 | verifier | plausible but ineffective — *wrong outcome* | after acting | C2 |
 
-Then the portability seam (C4) and the skill compiler (C1).
+Then the portability seam (C4) and the skill compiler (C1′).
 
 *Evidence: architecture + the CI-enforced module graph. The claim "`:core` has no
 Android dependency" is checkable by a reviewer from the build files.*
@@ -89,8 +99,14 @@ keeps them aligned.
   and generation proceeds unconstrained with no error. Any system relying on
   constrained decoding needs a positive check that the constraint is active.
   **E4 methodology**
+- **Ablating a grammar requires a prompt that already specifies the format.**
+  Omit it and the unconstrained arm collapses to a degenerate one-token answer,
+  producing a 0%-vs-100% result that measures the prompt rather than the
+  grammar. AXON's first attempt did exactly this; it is recorded as void.
+  Generalises to any constrained-decoding ablation. **E4 (void) → E4b**
 
-*Evidence: **E4** (A vs B valid-action rate), **E5**.*
+*Evidence: **E4b** (A vs B valid-action rate over a fair prompt), **E5**.
+E4 is void and must not be cited.*
 
 ### 5. Deterministic verification and self-healing (C2)
 
@@ -99,7 +115,12 @@ no model in the loop; rollback and replan with structured failure context.
 
 *Evidence: **E9** — not yet measured. Phase 4.*
 
-### 6. Trace-to-skill compilation (C1)
+### 6. Skill compilation as a viability mechanism (C1′)
+
+**Position against SkillDroid explicitly and early in this section**, before a
+reviewer does it. The mechanism is not new; the regime is. Their compilation
+removes a network round-trip from a cloud-model agent. Here it removes ~60 s of
+local inference per step from a model that is the only kind that fits.
 
 The compiler algorithm; slot inference by diffing repeated runs; the
 `llm_fallback` boundary; replay with per-step assertions and re-compilation on
@@ -107,10 +128,12 @@ divergence.
 
 **The headline figure.** Cold planning costs ~60 s/step on the target device;
 replay costs zero model calls. That gap is widest on exactly the low-end hardware
-the work targets — a flagship would make C1 look like an optimisation rather than
-a necessity.
+the work targets — on a flagship, compilation is a nicety; here it is the
+difference between a six-step task taking six minutes and taking milliseconds.
 
-*Evidence: **E10** — not yet measured. Phase 5.*
+*Evidence: **E10** — not yet measured. Phase 5. A cloud-baseline comparison on
+the same tasks would let this section quantify what offline operation costs, and
+is the single most valuable addition available.*
 
 ### 7. Evaluation
 

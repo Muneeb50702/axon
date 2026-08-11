@@ -32,13 +32,37 @@ import dev.axon.core.model.Goal
 public object PlannerPrompt {
 
     /**
-     * The stable half: role, rules, and how to choose a post-condition.
+     * The stable half: role, rules, output format, and how to choose a
+     * post-condition.
      *
-     * Written for a ~2B model, which shapes it more than politeness would
+     * Written for a ~1B model, which shapes it more than politeness would
      * suggest. Small models follow *concrete, positive* instructions far better
      * than abstract or negative ones, so this says "use the label in brackets"
      * rather than "avoid inventing selectors", and gives worked examples rather
-     * than describing a schema. The schema is the grammar's job.
+     * than describing a schema abstractly.
+     *
+     * ## Why the output format is described here, despite §7.4
+     *
+     * An earlier version omitted it entirely, reasoning that shape is the
+     * grammar's job (§7.4: "the grammar is not injected into the prompt"). That
+     * was a misreading, and experiment E4 exposed it: the prompt ended with
+     * "answer with the action only", and the unconstrained arm dutifully replied
+     * with the single word `tap`. The constrained arm looked perfect only
+     * because the grammar was supplying structure the prompt had failed to ask
+     * for — so the ablation measured *grammar versus a forgetful prompt*, which
+     * is not a result anyone should publish.
+     *
+     * Describing the format in prose is **not** injecting the grammar. §7.4
+     * forbids pasting the GBNF, because a grammar is a decoding constraint and
+     * belongs at the sampler; telling the model what an action looks like is
+     * ordinary prompting, and both ablation arms receive it identically. The
+     * grammar's contribution is then measured honestly: what it adds *over a
+     * well-specified prompt*, which is the only version of the C3 claim worth
+     * defending.
+     *
+     * It costs roughly 80 prompt tokens, and prefill is already ~63% of a
+     * planning step (E2) — a real trade, and one the evaluation should report
+     * rather than absorb silently.
      */
     public const val SYSTEM: String = """You operate an Android phone for the user, one action at a time.
 
@@ -64,7 +88,25 @@ RULES
 5. To open an app, use launch_app with its package name, e.g. "com.whatsapp".
 6. If the screen is still loading, use wait.
 
-Answer with the action only."""
+OUTPUT FORMAT
+Reply with one JSON object and nothing else. No explanation, no code fence.
+
+  {"action":"tap","target":{"by":"content_desc","value":"Send"},
+   "expect":{"type":"node_present","value":"Message sent"}}
+
+  {"action":"input_text","target":{"by":"content_desc","value":"Message"},
+   "text":"on my way",
+   "expect":{"type":"node_present","value":"on my way"}}
+
+  {"action":"launch_app","app":"com.whatsapp",
+   "expect":{"type":"app_foreground","value":"com.whatsapp"}}
+
+action  : tap | long_press | input_text | swipe | scroll | launch_app | press_key | wait
+by      : content_desc | text | id | class | coord
+expect  : node_present | node_absent | text_matches | screen_title | app_foreground
+extra   : "text" only with input_text; "direction" (up|down|left|right) only with
+          swipe/scroll; "app" only with launch_app; "key" (home|back|enter) only
+          with press_key."""
 
     /**
      * The volatile half: goal, screen, available actions, and any failure.
