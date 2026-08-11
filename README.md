@@ -26,6 +26,7 @@ repeated tasks drop from *N* model calls to zero.
 |---|---|
 | [`PROJECT_AXON_FYP_SPEC.md`](PROJECT_AXON_FYP_SPEC.md) | the full specification |
 | [`docs/RELATED_WORK.md`](docs/RELATED_WORK.md) | **honest novelty assessment** — what is and is not claimable |
+| [`docs/POSITIONING.md`](docs/POSITIONING.md) | **how AXON avoids being a clone** — the reframe from system to measurement |
 | [`docs/DECISIONS.md`](docs/DECISIONS.md) | every deviation from the spec, with evidence and how to reverse it |
 | [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md) | every measurement, with the configuration that produced it |
 | [`docs/PHASE1.md`](docs/PHASE1.md) | Phase 1 walkthrough and defence preparation |
