@@ -69,27 +69,52 @@ other module. This is the seam working as intended.
 as the practical floor for 3B–4B class models.
 
 **Found.** Gemma 4 was released 2026-04-02, after the spec was written. The E2B
-edge variant continues the same Per-Layer-Embeddings lineage:
+edge variant continues the same Per-Layer-Embeddings lineage.
+
+**Correction, 2026-08-11.** An earlier draft of this entry recorded the Q4_K_M
+download as ~1.3 GB, taken from a secondary blog source. That figure is wrong.
+Measured from the Hugging Face API against `unsloth/gemma-4-E2B-it-GGUF`:
+
+| file | size |
+|---|---|
+| `gemma-4-E2B-it-Q4_K_M.gguf` | **3.11 GB** |
+| `gemma-4-E2B-it-Q4_K_S.gguf` | 3.04 GB |
+| `gemma-4-E2B-it-Q3_K_M.gguf` | 2.54 GB |
+| `gemma-4-E2B-it-qat-UD-Q2_K_XL.gguf` | 2.19 GB |
+
+The discrepancy is inherent to the architecture and worth understanding rather
+than papering over: "E2B" denotes ~2 B *effective* parameters — the compute
+active per token — while the file holds the full parameter set, which
+Per-Layer Embeddings and selective activation draw from. Effective size and file
+size are different quantities for this model family, and quoting one for the
+other is an easy mistake to make. A panel may well probe it, so:
 
 | | Gemma 3n E2B (spec) | Gemma 4 E2B (now) |
 |---|---|---|
-| Q4_K_M size | ~2 GB | ~1.3 GB |
+| Q4_K_M file size | ~2 GB (per §11) | **3.11 GB** (measured) |
 | Effective params | ~2 B | ~2.3 B |
-| Throughput | — | 12–20 tok/s, recent Snapdragon |
-| RAM floor | 8 GB per §18 | fits 6 GB |
 | Agentic training | general instruct | native function-calling |
 
-**Did.** Gemma 4 E2B Q4_K_M is the primary model; Gemma 3n E2B is retained as a
-comparison point. Model ids are resolved at run time via `axon.model.small` /
-`axon.model.large` rather than compiled in (`bench/BenchTask.kt`), so §20.2's
+**Did.** Gemma 4 E2B **Q4_K_M** remains the primary model — it is what §7.3
+specifies, and it is the honest first measurement. Model ids resolve at run time
+via `axon.model.small` / `axon.model.large` (`bench/BenchTask.kt`), so §20.2's
 "re-run these checks close to submission" is a config change, not a code change.
 
-**Why it matters beyond a version bump.** §2.1 frames AXON as being for users on
-mid-range phones, and §18 warns *"Don't only demo on a flagship; the whole point
-is cheap phones."* Under the spec's own numbers the primary model needed 8 GB —
-a flagship — and the low-resource claim rested on a smaller fallback model. At
-1.3 GB the *primary* model runs on the 6 GB device the thesis is about. The
-central claim stops being a concession and becomes the default configuration.
+**What the corrected number costs, stated plainly.** The device has 7.9 GB total
+and ~4.3 GB available, so a 3.11 GB mmapped model fits but is not comfortable.
+The claim "the primary model runs on a 6 GB phone" is **not** supported at
+Q4_K_M and should not be made. Two honest positions remain, and Phase 1 measures
+which one to take:
+
+1. Q4_K_M on an 8 GB device — the spec-compliant configuration, and what the
+   benchmark headline numbers are produced on.
+2. Q3_K_M (2.54 GB) or the QAT Q2_K_XL (2.19 GB) for the 6 GB claim, **with the
+   quality cost measured** on AXON-Bench rather than assumed to be negligible.
+
+Quantisation-vs-task-success on a fixed benchmark is itself a result worth
+reporting (§14.2), and it turns a broken claim into a finding. What matters is
+that the low-resource story rests on a measurement, not on a number taken from a
+blog post.
 
 **Undo.** Set `axon.model.small` back to a Gemma 3n GGUF. No code change.
 
@@ -322,3 +347,89 @@ look necessary. Three mitigations follow directly and are Phase 1/3 work:
    cost rather than against a token-budget guess.
 3. **Router model for cheap steps**, per §11 — a sub-1B model to classify intent
    and match skills before the planner is ever invoked.
+
+---
+
+## D9 — The native build must be optimised even in a debug APK
+
+*Date: 2026-08-11. Affects: §18, §14.2, and the credibility of every latency number.*
+
+**Found.** AGP compiles the debug variant with `CMAKE_BUILD_TYPE=Debug`, i.e.
+`-O0`. That is harmless for JNI glue and ruinous for ggml, whose quantised matmul
+kernels depend entirely on vectorisation and inlining.
+
+The symptom was not a compiler warning. It was a **ten-minute hang** on a single
+32-token generation from a 0.8 GB model, ending in a SIGKILL from the OEM memory
+manager. Nothing in any log said "you are running unoptimised code".
+
+**Why this is worth its own entry.** The failure is invisible *and* plausible. A
+budget phone being slow at LLM inference is exactly what one expects, so an
+unoptimised build produces numbers that look like a finding. Every latency figure
+in §14.2 would have been wrong by more than an order of magnitude and no reviewer
+could have spotted it from the results table.
+
+**Did.** Force `-O3` for all four build-type flag sets in
+`android/inference/src/main/cpp/CMakeLists.txt`, before `add_subdirectory` so
+llama.cpp inherits them. Debug symbols are kept — the goal is optimised code that
+is still debuggable.
+
+---
+
+## D10 — Gemma 3 1B is the planner; Gemma 4 E2B becomes ablation arm E
+
+*Date: 2026-08-11. Affects: §11, §14.3, D2. Supersedes D2's model choice.*
+
+**Measured** on the TECNO Camon 20 (Helio G85), one planning step from the
+§14 screen corpus, 547-token prompt, grammar-constrained, optimised build:
+
+| model | size | prefill | decode | grammar | **total/step** |
+|---|---|---|---|---|---|
+| Gemma 3 1B Q4_K_M | 0.81 GB | 38.3 s (14.3 t/s) | 22.4 s (1.7 t/s) | 13.2 s | **60.7 s** |
+| Gemma 4 E2B Q4_K_M | 3.11 GB | 123.0 s (4.6 t/s) | 34.3 s (1.4 t/s) | 17.0 s | **157.4 s** ✂ |
+
+✂ = hit the token cap mid-object.
+
+**Did.** Gemma 3 1B Q4_K_M is the planner for configs A–D. Gemma 4 E2B becomes
+**config E**, §14.3's "naive larger model" baseline.
+
+**Why this is a better outcome than the spec's plan, not a retreat.** §14.3 asks
+for a 3B-vs-7B comparison and predicts that a constrained, verified,
+skill-compiled small model will match or beat a naive larger one. That experiment
+needs two models separated by a real capability gap, both runnable on the target
+device. On this hardware that pairing is 1B vs E2B, and the gap is now measured
+rather than assumed: **2.6× in wall-clock per step**. The headline claim gets
+sharper — the small model is not merely adequate, it is the only one that makes a
+multi-step task finish in a usable time, and the architecture is what makes it
+reliable enough to use.
+
+### Where the time actually goes — and what to do about it
+
+Two numbers determine the next optimisations, and both were guesses until now:
+
+1. **Prefill is 63% of a step.** The prompt is 547 tokens, of which ~350 are the
+   system prompt — identical on every step of every task. KV-cache prefix reuse
+   (D8, mitigation 1) therefore addresses about half the total cost, and it is
+   now the highest-value change available. `PlannerPrompt` is already split into
+   a stable prefix and a volatile suffix for exactly this.
+
+2. **Grammar sampling is 59% of decode** (13.2 s of 22.4 s). This is the price of
+   the deliberate choice in `axon_llama.cpp` to put the grammar at the head of the
+   sampler chain, where it is evaluated against Gemma's full ~262k vocabulary on
+   every token. llama.cpp's own `common_sampler` avoids this with an optimistic
+   scheme: sample first, check the single chosen token, and fall back to full
+   masking only on rejection.
+
+   Head position was chosen for unconditional correctness, and that was right for
+   Phase 1 — C3 had to be shown working before it was made fast. But **59% of
+   decode is too high to keep**, and the optimistic scheme is equally correct, so
+   Phase 3 should adopt it and report both numbers. The cost of constrained
+   decoding is itself a §14.2 result, and now it is a measurement.
+
+### One more grammar finding
+
+The reference grammar in §10.6 threads an optional-whitespace rule between every
+token, as `json.gbnf` does. Correct for a parser, wrong for a generator: Gemma 4
+E2B used that freedom to emit pretty-printed JSON with newlines and **ran into
+its token cap mid-object**. Removing the whitespace slots forces compact output,
+cut a 1B generation from 43 to 38 tokens, and deletes that truncation mode
+entirely.

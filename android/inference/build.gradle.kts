@@ -21,6 +21,10 @@
 
 plugins {
     alias(libs.plugins.android.library)
+    // The Phase 1 acceptance harness serialises its results table to JSON so the
+    // §14 numbers are a file that can be diffed and re-plotted, not logcat output
+    // someone transcribed by hand.
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -29,6 +33,12 @@ android {
 
     defaultConfig {
         minSdk = libs.versions.minSdk.get().toInt()
+
+        // The Phase 1 acceptance harness (§13) is an instrumented test: it needs
+        // real arm64 silicon and a real 3 GB model, neither of which exists in a
+        // JVM unit test. Run with:
+        //   ./gradlew :android:inference:connectedDebugAndroidTest
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
             // §18: the deliverable targets arm64-v8a. Shipping other ABIs would
@@ -42,12 +52,37 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    // externalNativeBuild is wired in Phase 1, alongside the llama.cpp submodule.
-    // Left out here so Phase 0 builds without the native toolchain step.
+    defaultConfig {
+        externalNativeBuild {
+            cmake {
+                // §18: android-26 baseline, arm64-v8a only.
+                //
+                // AXON_VULKAN defaults OFF per D8 — the Vulkan backend is a
+                // measurement arm, not an assumption. Build the comparison with:
+                //   ./gradlew :android:app:assembleDebug -PaxonVulkan=true
+                arguments += listOf(
+                    "-DANDROID_PLATFORM=android-26",
+                    "-DAXON_VULKAN=" + if (project.hasProperty("axonVulkan")) "ON" else "OFF",
+                )
+                cppFlags += "-O3"
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
 }
 
 
 dependencies {
     api(project(":core"))
     implementation(libs.kotlinx.coroutines.android)
+
+    androidTestImplementation(libs.androidx.test.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.kotlinx.coroutines.test)
 }

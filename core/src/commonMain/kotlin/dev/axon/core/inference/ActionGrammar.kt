@@ -38,6 +38,16 @@ package dev.axon.core.inference
  *    `json.gbnf`. A raw newline inside a JSON string is invalid JSON, and a
  *    grammar that permits one produces output the parser then rejects — exactly
  *    the failure C3 exists to eliminate.
+ *  - **No optional whitespace.** §10.6's reference grammar threads a `ws ::=
+ *    [ \t\n]*` slot between every token, as `json.gbnf` does. That is right for
+ *    a *parser* and wrong for a *generator*: every permitted space is a token
+ *    the model may spend, and on-device those tokens are the budget. Measured on
+ *    the target device, Gemma 4 E2B emitted pretty-printed JSON with newlines
+ *    and ran into its token cap **mid-object** — a truncation failure caused
+ *    entirely by the grammar allowing whitespace it had no reason to allow.
+ *    Removing the slots forces compact output, cuts tokens per action, and
+ *    deletes that failure mode. JSON semantics are unchanged; only the
+ *    generator's freedom to waste tokens is.
  *
  * The wire format is unchanged from §10.1, so §10.1 remains normative for any
  * reader of the JSON. Only the impossible combinations were removed.
@@ -83,79 +93,102 @@ public object ActionGrammar {
         # Illegal field/action combinations have no token path.
         # ============================================================
 
+        # NOTE ON LAYOUT — a real GBNF constraint, not a style choice.
+        # llama.cpp's parser ends a rule at the newline. A rule body may only
+        # span lines while inside an open "( )", which is the reason every
+        # multi-line rule below is parenthesised. llama.cpp's own json.gbnf
+        # merely looks multi-line; its continuations are all inside an open
+        # paren too. Removing these brackets makes the grammar fail to parse
+        # with "expecting ::=", and the sampler then falls back to
+        # unconstrained decoding, which is a silent loss of C3.
+
         root ::= tap | long-press | input-text | swipe | scroll | launch-app | press-key | wait
 
         # --- element-directed actions -------------------------------
 
-        tap ::=
-          "{" ws "\"action\"" ws ":" ws "\"tap\""
-          ws "," ws target-f
-          ws "," ws expect-f ws "}"
+        tap ::= (
+          "{" "\"action\"" ":" "\"tap\""
+          "," target-f
+          "," expect-f "}"
+        )
 
-        long-press ::=
-          "{" ws "\"action\"" ws ":" ws "\"long_press\""
-          ws "," ws target-f
-          ws "," ws expect-f ws "}"
+        long-press ::= (
+          "{" "\"action\"" ":" "\"long_press\""
+          "," target-f
+          "," expect-f "}"
+        )
 
         # Only input-text may carry a "text" field.
-        input-text ::=
-          "{" ws "\"action\"" ws ":" ws "\"input_text\""
-          ws "," ws target-f
-          ws "," ws text-f
-          ws "," ws expect-f ws "}"
+        input-text ::= (
+          "{" "\"action\"" ":" "\"input_text\""
+          "," target-f
+          "," text-f
+          "," expect-f "}"
+        )
 
         # --- directional actions ------------------------------------
         # Only swipe/scroll may carry "direction". Target is optional:
         # present to act within an element, absent for the whole screen.
 
-        swipe ::=
-          "{" ws "\"action\"" ws ":" ws "\"swipe\""
-          ws "," ws direction-f
-          ( ws "," ws target-f )?
-          ws "," ws expect-f ws "}"
+        swipe ::= (
+          "{" "\"action\"" ":" "\"swipe\""
+          "," direction-f
+          ( "," target-f )?
+          "," expect-f "}"
+        )
 
-        scroll ::=
-          "{" ws "\"action\"" ws ":" ws "\"scroll\""
-          ws "," ws direction-f
-          ( ws "," ws target-f )?
-          ws "," ws expect-f ws "}"
+        scroll ::= (
+          "{" "\"action\"" ":" "\"scroll\""
+          "," direction-f
+          ( "," target-f )?
+          "," expect-f "}"
+        )
 
         # --- device-directed actions --------------------------------
         # These address the device, not an element, so no target field.
 
-        launch-app ::=
-          "{" ws "\"action\"" ws ":" ws "\"launch_app\""
-          ws "," ws app-f
-          ws "," ws expect-f ws "}"
+        launch-app ::= (
+          "{" "\"action\"" ":" "\"launch_app\""
+          "," app-f
+          "," expect-f "}"
+        )
 
-        press-key ::=
-          "{" ws "\"action\"" ws ":" ws "\"press_key\""
-          ws "," ws key-f
-          ws "," ws expect-f ws "}"
+        press-key ::= (
+          "{" "\"action\"" ":" "\"press_key\""
+          "," key-f
+          "," expect-f "}"
+        )
 
-        wait ::=
-          "{" ws "\"action\"" ws ":" ws "\"wait\""
-          ws "," ws expect-f ws "}"
+        wait ::= (
+          "{" "\"action\"" ":" "\"wait\""
+          "," expect-f "}"
+        )
 
         # --- fields --------------------------------------------------
 
-        target-f ::= "\"target\"" ws ":" ws target
-        target   ::= "{" ws "\"by\"" ws ":" ws by
-                     ws "," ws "\"value\"" ws ":" ws string ws "}"
+        target-f ::= "\"target\"" ":" target
+        target   ::= (
+          "{" "\"by\"" ":" by
+          "," "\"value\"" ":" string "}"
+        )
 
         by ::= "\"text\"" | "\"id\"" | "\"content_desc\"" | "\"class\"" | "\"coord\""
 
-        expect-f ::= "\"expect\"" ws ":" ws expect
-        expect   ::= "{" ws "\"type\"" ws ":" ws etype
-                     ws "," ws "\"value\"" ws ":" ws string ws "}"
+        expect-f ::= "\"expect\"" ":" expect
+        expect   ::= (
+          "{" "\"type\"" ":" etype
+          "," "\"value\"" ":" string "}"
+        )
 
-        etype ::= "\"node_present\"" | "\"node_absent\"" | "\"text_matches\""
-                | "\"screen_title\"" | "\"app_foreground\""
+        etype ::= (
+          "\"node_present\"" | "\"node_absent\"" | "\"text_matches\""
+          | "\"screen_title\"" | "\"app_foreground\""
+        )
 
-        text-f      ::= "\"text\"" ws ":" ws string
-        app-f       ::= "\"app\"" ws ":" ws package-name
-        key-f       ::= "\"key\"" ws ":" ws key
-        direction-f ::= "\"direction\"" ws ":" ws direction
+        text-f      ::= "\"text\"" ":" string
+        app-f       ::= "\"app\"" ":" package-name
+        key-f       ::= "\"key\"" ":" key
+        direction-f ::= "\"direction\"" ":" direction
 
         key       ::= "\"home\"" | "\"back\"" | "\"enter\""
         direction ::= "\"up\"" | "\"down\"" | "\"left\"" | "\"right\""
@@ -176,7 +209,6 @@ public object ActionGrammar {
         escape ::= ["\\/bfnrt] | "u" hex hex hex hex
         hex    ::= [0-9a-fA-F]
 
-        ws ::= [ \t\n]*
     """.trimIndent()
 
     /** The grammar as the value type [InferenceEngine.generate] accepts. */

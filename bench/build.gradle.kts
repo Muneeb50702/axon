@@ -38,3 +38,17 @@ dependencies {
 tasks.test {
     useJUnitPlatform()
 }
+
+/**
+ * Emit the §10.6 action grammar so llama.cpp's own parser can validate the exact
+ * text the app ships. See ExportGrammar for why the grammar is generated rather
+ * than checked in.
+ */
+val exportGrammar by tasks.registering(JavaExec::class) {
+    group = "verification"
+    description = "Write the action grammar to build/axon-action.gbnf"
+    mainClass.set("dev.axon.bench.ExportGrammar")
+    classpath = sourceSets["main"].runtimeClasspath
+    args(layout.buildDirectory.file("axon-action.gbnf").get().asFile.path)
+    outputs.file(layout.buildDirectory.file("axon-action.gbnf"))
+}
