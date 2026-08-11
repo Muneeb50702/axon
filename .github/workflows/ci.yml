@@ -24,6 +24,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - uses: actions/setup-java@v4
         with:
@@ -31,6 +33,17 @@ jobs:
           java-version: '17'
 
       - uses: gradle/actions/setup-gradle@v4
+
+      # The check that would have caught a silent loss of C3.
+      #
+      # A GBNF rule body ends at the newline unless wrapped in "( )". When the
+      # grammar was rejected on-device, llama.cpp simply did not install the
+      # sampler and generation ran UNCONSTRAINED with nothing failing — no
+      # exception, no test failure, just a contribution quietly not happening.
+      # This runs llama.cpp's own parser over the grammar the app actually ships
+      # (generated from ActionGrammar.SOURCE, never a checked-in copy).
+      - name: Action grammar parses in llama.cpp
+        run: ./tools/check-grammar.sh
 
       # §10 schemas, §10.6 grammar/model correspondence, §16 credential refusal.
       - name: Core tests
@@ -56,6 +69,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - uses: actions/setup-java@v4
         with:
@@ -63,6 +78,8 @@ jobs:
           java-version: '17'
 
       - uses: android-actions/setup-android@v3
+
+      # NDK: Phase 1 onward builds llama.cpp from the submodule.
 
       - uses: gradle/actions/setup-gradle@v4
 

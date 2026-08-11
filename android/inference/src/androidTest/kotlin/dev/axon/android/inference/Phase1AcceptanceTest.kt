@@ -131,11 +131,14 @@ class Phase1AcceptanceTest {
             constrained += observe(case.id, prompt, ActionGrammar.GBNF)
             unconstrained += observe(case.id, prompt, grammar = null)
 
-            if ((i + 1) % 10 == 0) {
-                Log.i(TAG, "progress ${i + 1}/${cases.size} " +
-                    "constrained-valid=${constrained.count { it.valid }}/${constrained.size} " +
-                    "unconstrained-valid=${unconstrained.count { it.valid }}/${unconstrained.size}")
-            }
+            // Logged every case, not every tenth. A full run is ~50 minutes of
+            // sustained CPU load, and TECNO's OEM memory manager has already
+            // SIGKILLed this process once mid-run. Per-case logging means a kill
+            // costs the remaining cases, not the whole run's data.
+            Log.i(TAG, "[${i + 1}/${cases.size}] ${case.id} " +
+                "B(grammar)=${constrained.count { it.valid }}/${constrained.size} " +
+                "A(naive)=${unconstrained.count { it.valid }}/${unconstrained.size} " +
+                "lastMs=${constrained.last().latencyMs}")
         }
 
         val report = Report(

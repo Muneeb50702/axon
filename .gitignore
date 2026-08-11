@@ -14,8 +14,9 @@ local.properties
 models/
 *.gguf
 
-# llama.cpp is vendored as a submodule in Phase 1, not as copied sources.
-android/inference/src/main/cpp/llama.cpp/
+# llama.cpp is a submodule at third_party/llama.cpp (see .gitmodules), so it is
+# tracked, not ignored. Only the host build output of the grammar checker is.
+tools/gbnf-check/build/
 
 # Generated evaluation output (§14). Results are reproduced by running the
 # harness; committing them would let a stale table outlive the code that made it.

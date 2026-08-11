@@ -91,17 +91,32 @@ Android dependency, so a change that made it need one would fail to compile.
 
 ## Build
 
-Requires JDK 17 and the Android SDK (compileSdk 36, NDK for Phase 1 onward).
+Requires JDK 17 and the Android SDK (compileSdk 36, NDK 28+ from Phase 1 on).
+llama.cpp is a submodule, so clone recursively:
 
 ```bash
-./gradlew :core:jvmTest            # contracts, grammar, safety policy
+git clone --recurse-submodules <repo>      # or: git submodule update --init --recursive
+
+./tools/check-grammar.sh           # §10.6 grammar parses in llama.cpp itself
+./gradlew :core:jvmTest            # contracts, schemas, §16 safety policy
 ./gradlew :bench:test              # shipped skill manifests validate
 ./gradlew :android:app:assembleDebug
 ```
 
-CI runs all three on every push. The core suite needs no device or emulator —
-the same property that makes the evaluation reproducible by someone who does not
-own the handset.
+CI runs all four on every push. None need a device or an emulator — the same
+property that makes the evaluation reproducible by someone who does not own the
+handset.
+
+### Running the model
+
+Weights are side-loaded: AXON holds no `INTERNET` permission at all, so it cannot
+download them (see [D7](docs/DECISIONS.md)). That is the cost of making "screen
+contents cannot leave the device" an OS-enforced property.
+
+```bash
+./tools/fetch-model.sh --push      # Gemma 3 1B Q4_K_M → /data/local/tmp/axon
+./gradlew :android:inference:connectedDebugAndroidTest
+```
 
 ## Safety
 
