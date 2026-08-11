@@ -136,12 +136,55 @@ Both arms receive **byte-identical prompts**; the grammar is the only variable.
 This is the §13 Phase 1 acceptance criterion and simultaneously the A-vs-B rows
 of the §14.3 ablation matrix.
 
-| config | grammar | valid actions |
+| metric | A (naive) | B (+grammar) |
 |---|---|---|
-| A (naive) | ✗ | 0 / 12 |
-| B (+grammar) | ✓ | **12 / 12** |
+| cases | 18 | 18 |
+| **valid-action rate** | **0.0%** | **100.0%** |
+| median latency | 32.5 s | 52.4 s |
+| median prefill | 32.0 s | 32.5 s |
+| median decode | 0.4 s | 19.0 s |
+| grammar sampling | — | 12.8 s |
+| mean output tokens | **2.4** | 36.6 |
+| truncated | 0 | 0 |
 
-*(Run in progress at time of writing; final table replaces this.)*
+18 of 24 cases recorded; 6 lost to the E6 process kills.
+Artefact: `bench/results/acceptance-raw.log` / `.json`.
+
+### ⚠ This result is NOT publishable as it stands — the baseline is strawmanned
+
+`mean output tokens = 2.4` for arm A is the tell, and following it up settles the
+matter. Running the unconstrained arm and printing the text gives:
+
+```
+output tokens  : 1
+stopped on EOG : true
+output         : tap
+```
+
+Arm A is not emitting *malformed JSON*. It is emitting the word "tap" and
+stopping. The cause is in `PlannerPrompt.SYSTEM`, which never states that the
+output should be JSON — it ends with "Answer with the action only", and a 1B
+model reasonably reads that as "name the action".
+
+The constrained arm succeeds regardless, because the grammar supplies the
+structure the prompt omitted. So what this experiment actually measured is
+*"grammar versus a prompt that forgot to ask for JSON"* — which is not the
+question, and a reviewer would reject it on sight.
+
+**What C3 should claim, and how to measure it honestly.** The interesting
+question is what the grammar adds *over a well-specified prompt*, so both arms
+must be told the output format, including a worked JSON example; only arm B
+additionally gets the grammar. The expected outcome is a smaller but real gap —
+published figures for unconstrained small models typically land in the 40–80%
+valid-JSON range, not 0%.
+
+Note the tension this creates with §7.4, which says the grammar is not injected
+into the prompt. Describing the *format* in prose is not injecting the grammar,
+and both arms get the same description, so the ablation stays clean. It does cost
+prompt tokens, and prefill is already 63% of a step (E2) — that trade-off is
+itself worth reporting.
+
+**Status: E4 is void. Supersede with E4b once the prompt is fixed.**
 
 **Validity is judged by `AxonJson.strict`** — the same parser the planner uses,
 with `ignoreUnknownKeys = false`. A laxer parser here would flatter arm A by
