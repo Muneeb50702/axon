@@ -29,12 +29,14 @@ Deviations from it, with evidence: [`docs/DECISIONS.md`](docs/DECISIONS.md).
 
 ## Status
 
-**Phase 0 complete** — scaffolding, contracts, schemas, action grammar.
+**Phase 1 in progress** — on-device inference works. Gemma 3 1B Q4_K_M emits
+schema-valid grammar-constrained actions on a TECNO Camon 20 (Helio G85) in
+60.7 s per planning step. See [`docs/PHASE1.md`](docs/PHASE1.md).
 
 | phase | scope | state |
 |---|---|---|
 | 0 | KMP module graph, §9 interfaces, §10 schemas, §10.6 grammar, CI | ✅ done |
-| 1 | llama.cpp JNI, mmap load, GBNF sampler, thermal telemetry | next |
+| 1 | llama.cpp JNI, mmap load, GBNF sampler, thermal telemetry | ✅ working |
 | 2 | AccessibilityDriver, perception, executor + precondition gate | |
 | 3 | Planner in the loop, end-to-end PLAN path | mid-year demo |
 | 4 | Verifier + self-healing — **C2** | |
