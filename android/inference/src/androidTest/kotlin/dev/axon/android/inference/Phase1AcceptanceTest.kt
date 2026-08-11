@@ -404,11 +404,28 @@ class Phase1AcceptanceTest {
             get() = InstrumentationRegistry.getArguments()
                 .getString("axonSamples")?.toIntOrNull() ?: 24
 
+        /**
+         * Planner model for configs A–D, per decision D10.
+         *
+         * Named explicitly rather than "whatever .gguf is in the directory".
+         * `listFiles()` returns no defined order, and with both candidates
+         * side-loaded it picked the 3.11 GB Gemma 4 E2B — 157 s per generation
+         * against the 1B's 60.7 s, turning a 50-minute acceptance run into a
+         * two-hour one and silently benchmarking config E while reporting it as
+         * A/B. A measured model choice has to be stated, not left to the
+         * filesystem.
+         */
+        private const val DEFAULT_MODEL = "gemma-3-1b-it-Q4_K_M.gguf"
+
         @BeforeClass
         @JvmStatic
         fun loadModel() {
-            val model = File(MODEL_DIR).listFiles()
-                ?.firstOrNull { it.name.endsWith(".gguf") }
+            val requested = InstrumentationRegistry.getArguments().getString("axonModel")
+                ?: DEFAULT_MODEL
+            val model = File(MODEL_DIR, requested).takeIf { it.isFile }
+                ?: File(MODEL_DIR).listFiles()
+                    ?.filter { it.name.endsWith(".gguf") }
+                    ?.minByOrNull { it.length() }
 
             // Skipped rather than failed when the model is absent: CI has no
             // 3 GB GGUF and no phone, and a red suite there would train everyone
