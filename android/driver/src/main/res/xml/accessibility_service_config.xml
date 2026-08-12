@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AXON's accessibility service configuration (spec §16).
+
+  This file is the most security-relevant XML in the project, because it declares
+  exactly how much of the device AXON can reach. Every attribute below is set to
+  the minimum that lets the agent work, and the omissions are as deliberate as
+  the inclusions.
+
+  accessibilityEventTypes="typeViewFocused"
+      Not "typeAllMask". AXON is pull-based: it reads the screen while executing
+      a step and at no other time. Subscribing to the full event stream would
+      mean receiving a callback for every screen the user visits, whether or not
+      a task is running — the always-watching behaviour §16 forbids. The single
+      narrow type is requested because Android requires at least one; the handler
+      in AxonAccessibilityService ignores it.
+
+  canRetrieveWindowContent="true"
+      Required. Reading the UI tree is the whole perception layer, and it is what
+      makes deterministic verification (C2) possible at all. The mitigation is
+      not to avoid this flag but to refuse credential content at capture time —
+      see SensitivePolicy and TreeCapture.
+
+  canPerformGestures="true"
+      Required to act. Gestures rather than ACTION_CLICK, because the latter
+      silently no-ops on custom and Compose surfaces.
+
+  NOT declared, on purpose:
+    canRequestFilterKeyEvents  — keylogging. Never.
+    canRequestTouchExplorationMode — would intercept the user's own touches.
+    canRequestEnhancedWebAccessibility / canRequestFingerprintGestures.
+    packageNames — left unset so the user chooses which apps to use AXON with
+      via task scope, rather than the app silently claiming access to all of
+      them at install time.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeViewFocused"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows"
+    android:canRetrieveWindowContent="true"
+    android:canPerformGestures="true"
+    android:notificationTimeout="100"
+    android:description="@string/accessibility_service_description"
+    android:summary="@string/accessibility_service_summary" />

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!--
+          §16 requires that this service is visible, user-enabled and never
+          self-starting. BIND_ACCESSIBILITY_SERVICE is enforced by the OS: only
+          the system may bind it, and only after the user enables it by hand in
+          Settings. AXON cannot enable its own accessibility service, and by §16
+          it should not want to — the app's job is to explain and link there.
+        -->
+        <service
+            android:name="dev.axon.android.driver.AxonAccessibilityService"
+            android:exported="false"
+            android:label="@string/accessibility_service_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+    </application>
+
+</manifest>

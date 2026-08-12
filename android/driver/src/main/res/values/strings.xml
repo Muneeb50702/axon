@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_service_label">AXON</string>
+
+    <!--
+      Shown on the system's accessibility permission screen. Written plainly and
+      honestly, because this is the screen where the user decides whether to hand
+      over the most powerful API on the device. §16's ethics framing is not a
+      thesis chapter here — it is this paragraph.
+    -->
+    <string name="accessibility_service_summary">Lets AXON read the screen and tap for you while a task is running.</string>
+    <string name="accessibility_service_description">AXON uses this to read what is on screen and perform taps and swipes when you ask it to do something.\n\nIt only reads the screen while a task you started is running, and shows a notification the whole time.\n\nIt never reads password, PIN, OTP or card fields, and it has no internet permission at all — nothing it sees can leave this phone.</string>
+</resources>
