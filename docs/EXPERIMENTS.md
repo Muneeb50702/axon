@@ -540,6 +540,75 @@ behaviour that happened to be false.
 
 ---
 
+## E18b — Screen grammar holds; semantic selection is the remaining gap
+
+*2026-08-12 · `3f5de5a` · Gemma 3 1B Q4_K_M · live device via gateway service ·
+goal: "open whatsapp" · launcher in foreground · screen grammar + repetition
+guard active · `stepBudget` 6*
+
+**AXON's first real action on a live app.** The agent perceived the launcher,
+planned, passed the gate, dispatched a tap — and opened the **phone dialer**
+instead of WhatsApp. Run stopped manually at that point; `mCallState=0`, nothing
+was dialled.
+
+### Every structural defence held
+
+| mechanism | verdict |
+|---|---|
+| GBNF grammar (C3) | ✅ well-formed action |
+| screen grammar (C3′) | ✅ selected a label genuinely present on the launcher |
+| precondition gate (§7.5) | ✅ target resolved, action allowed |
+| repetition guard | ✅ no loop — contrast E18, three identical attempts |
+| **model's semantic choice** | ❌ **wrong element** |
+
+Compare directly with E18 on the same goal: three identical hallucinated actions,
+nothing dispatched, 182 s wasted. Here the agent acted on the first attempt and
+acted on something real. The structural fixes did what they were built for.
+
+### The finding
+
+**This is where scaffolding stops substituting for scale.** Every failure mode
+encountered so far had a structural remedy — malformed output, absent targets,
+repetition, invisibility. This one does not. Choosing which of several legal,
+present, well-formed options corresponds to "whatsapp" is semantic selection, and
+no decoding constraint can supply it.
+
+It is also a live demonstration of the caveat this log has been repeating: **a
+100% valid-action rate (E4b) is not a task success rate.** Every action in this
+run was valid. The task still failed. Anyone reading the C3 numbers as success
+numbers now has a concrete counter-example, which is worth more in the paper than
+another paragraph of hedging.
+
+For POSITIONING §3.1's substitution surface, this locates a point on the curve:
+at 1B, with full scaffolding, structural validity is solved and semantic
+selection is not. Whether 2B or 4B closes it is exactly what the surface
+measures.
+
+### Candidate remedies, none structural
+
+- **Router model** (§11) — a small classifier mapping the goal to a target app or
+  package before the planner sees the screen, so "whatsapp" resolves to
+  `com.whatsapp` rather than to whichever icon looks plausible.
+- **Prefer `launch_app` when the goal names an app.** The prompt already says so
+  and the model ignored it (E18); making it structural would mean restricting the
+  grammar to `launch_app` when the goal parses as an app reference.
+- **Few-shot examples** of goal→action for app-opening.
+- **Label similarity in the prompt**, ranking screen elements by lexical distance
+  to the goal so the right one is visibly nearer.
+
+The second is the most AXON-shaped and the cheapest to test.
+
+### Safety note
+
+The run was stopped by hand once the dialer was open, with five steps of budget
+remaining. Nothing had gone wrong, and the point of stopping was that the next
+action was unconstrained by anything except the budget. §16 requires explicit
+confirmation for irreversible actions — placing a call among them — and this run
+is the argument for implementing that gate before any longer autonomous run. It
+is currently declared in `Capability.ALWAYS_CONFIRM` and **not yet enforced**.
+
+---
+
 ## Open measurements
 
 Required before publication. Listed here so gaps are visible rather than
@@ -559,3 +628,5 @@ discovered late.
 | E17 | Energy per task: cold PLAN vs compiled replay — the C1′ headline in joules | Phase 5 |
 | E18b | Re-run "open whatsapp" with repetition guard + screen grammar | needs gateway service |
 | E19 | Task success and token cost, screen-grounded vs base grammar | Phase 7 |
+| E20 | Does a router model close the semantic-selection gap (E18b)? | Phase 3 |
+| E21 | Grammar restricted to launch_app when the goal names an app | Phase 3 |
