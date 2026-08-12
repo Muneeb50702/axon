@@ -340,18 +340,26 @@ private fun AxonApp(controller: AgentController, agent: AxonAgent) {
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Spacer(Modifier.height(8.dp))
+                    // Routed through the foreground service, not run inline.
+                    // Inline, the agent perceives AXON's own UI and dies when
+                    // backgrounded (E18); through the gateway it perceives the
+                    // app the user switches to, and the persistent notification
+                    // keeps it alive and stoppable.
                     Button(
                         onClick = {
-                            scope.launch {
-                                agent.run(
-                                    dev.axon.core.model.Goal(goalText, stepBudget = 4),
-                                )
-                            }
+                            dev.axon.android.app.gateway.AxonGatewayService
+                                .run(context, goalText)
                         },
-                        enabled = serviceOn && agentState.modelId != null &&
-                            !agentState.running && goalText.isNotBlank(),
+                        enabled = serviceOn && goalText.isNotBlank(),
                         modifier = Modifier.fillMaxWidth(),
-                    ) { Text(if (agentState.running) "running…" else "Run") }
+                    ) { Text("Run in background") }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Starts the agent as a foreground service, then switch to the app you " +
+                            "want it to operate. Watch the notification; stop it from there.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
 
                     Spacer(Modifier.height(24.dp))
                     Text(
