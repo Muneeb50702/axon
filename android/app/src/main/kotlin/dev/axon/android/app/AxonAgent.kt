@@ -11,8 +11,14 @@ import dev.axon.core.executor.DefaultExecutor
 import dev.axon.core.model.CompactState
 import dev.axon.core.model.Goal
 import dev.axon.core.model.TaskResult
+import dev.axon.core.memory.CompilationPolicy
+import dev.axon.core.memory.InMemoryTraceStore
+import dev.axon.core.memory.TraceRecorder
 import dev.axon.core.planner.ConstrainedPlanner
-import dev.axon.core.runtime.DefaultAgentRuntime
+import dev.axon.core.runtime.AxonRuntime
+import dev.axon.core.runtime.RunOutcome
+import dev.axon.core.skills.DefaultSkillCompiler
+import dev.axon.core.skills.InMemorySkillStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -49,6 +55,17 @@ class AxonAgent(private val context: Context) {
 
     private var engine: LlamaEngine? = null
     private val driver = AccessibilityDriver(context.applicationContext)
+
+    /**
+     * Skills and traces, shared across every task this process runs.
+     *
+     * In-memory for now, so learning survives a task but not a restart. §11
+     * specifies SQLite, and that is what makes "the system gets faster the more
+     * it is used" true across days rather than within one session — Phase 6.
+     */
+    private val skills = InMemorySkillStore()
+    private val traces = InMemoryTraceStore()
+    private var traceSeq = 0
 
     private val _state = MutableStateFlow(AgentState())
     val state: StateFlow<AgentState> = _state.asStateFlow()
@@ -132,7 +149,7 @@ class AxonAgent(private val context: Context) {
             val eng = engine ?: error("model not loaded")
             check(isServiceEnabled) { "accessibility service is not enabled" }
 
-            val runtime = DefaultAgentRuntime(
+            val runtime = AxonRuntime(
                 driver = driver,
                 planner = ConstrainedPlanner(eng),
                 executor = DefaultExecutor(
@@ -140,18 +157,37 @@ class AxonAgent(private val context: Context) {
                     nowMs = System::currentTimeMillis,
                     confirmation = confirmationGate,
                 ),
+                skills = skills,
+                traces = traces,
+                compiler = DefaultSkillCompiler(),
+                recorder = TraceRecorder(
+                    device = driver.deviceFamily,
+                    model = eng.modelId,
+                    newId = { "trace-${traceSeq++}" },
+                    nowMs = System::currentTimeMillis,
+                ),
                 nowMs = System::currentTimeMillis,
+                compilationPolicy = CompilationPolicy(minCleanRuns = 2),
                 goalReached = goalReached,
             )
 
             _state.value = _state.value.copy(running = true, status = "running: ${goal.utterance}")
-            val result = runtime.execute(goal)
+            val outcome: RunOutcome = runtime.execute(goal)
+            val result = outcome.result
 
             _state.value = _state.value.copy(
                 running = false,
-                status = "${result.outcome} — ${result.steps.size} steps, " +
-                    "${result.llmCalls} model calls, ${result.totalMs / 1000}s",
+                status = buildString {
+                    append(result.outcome).append(" via ").append(outcome.path)
+                    append(" — ").append(result.steps.size).append(" steps, ")
+                    // The C1′ headline, surfaced where a demo can point at it.
+                    append(result.llmCalls).append(" model calls, ")
+                    append(result.totalMs / 1000).append("s")
+                    outcome.compiled?.let { append(" · compiled skill '").append(it).append("'") }
+                },
                 lastResult = result,
+                lastPath = outcome.path.name,
+                skillCount = skills.all().size,
             )
             result
         }.onFailure { e ->
@@ -176,4 +212,10 @@ data class AgentState(
     val modelId: String? = null,
     val running: Boolean = false,
     val lastResult: TaskResult? = null,
+
+    /** PLAN, REPLAY or REPLAY_WITH_REPAIR — which path served the last run. */
+    val lastPath: String? = null,
+
+    /** Skills learned so far this session. */
+    val skillCount: Int = 0,
 )

@@ -317,10 +317,19 @@ private fun AxonApp(controller: AgentController, agent: AxonAgent) {
                                 enabled = !agentState.running && agentState.modelId == null,
                             ) { Text("Load model") }
 
+                            if (agentState.skillCount > 0) {
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    "${agentState.skillCount} skill(s) learned this session",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFF7DD3FC),
+                                )
+                            }
+
                             agentState.lastResult?.let { r ->
                                 Spacer(Modifier.height(10.dp))
                                 Text(
-                                    "${r.outcome}",
+                                    "${r.outcome}${agentState.lastPath?.let { " via $it" } ?: ""}",
                                     fontWeight = FontWeight.SemiBold,
                                     color = if (r.outcome.name == "SUCCESS") Color(0xFF7DD3FC)
                                     else Color(0xFFFDE047),
