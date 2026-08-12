@@ -609,6 +609,53 @@ is currently declared in `Capability.ALWAYS_CONFIRM` and **not yet enforced**.
 
 ---
 
+## E21 — Collapsing the grammar for app-launch goals
+
+*2026-08-12 · `af9c73d` · implemented and unit-tested; **not yet measured on
+device***
+
+E18b's failure was semantic selection: a well-formed, screen-grounded,
+gate-approved action opened the phone dialer instead of WhatsApp. The prompt
+already said *"to open an app, use launch_app with its package name"* and the
+model ignored it, as it ignored the failure context in E18.
+
+**"Open X" is one of the few goals whose correct action is determinable without
+the model.** If the device has an app named X, the right move is `launch_app`
+with X's package, whatever is on screen. So when a goal parses as *purely* a
+launch intent and the name resolves to an installed package, the grammar
+collapses to a single production — one legal action, one token path. The dialer
+becomes unreachable rather than merely wrong.
+
+This is the strongest constraint anywhere in AXON:
+
+| grammar | admits |
+|---|---|
+| base (C3) | any well-formed action |
+| screen-grounded (C3′) | …naming an element that is present |
+| **launch (E21)** | **exactly one action** |
+
+Safe only because the determination happens *outside* the model, by a package
+lookup that cannot be wrong about whether an app exists.
+
+**Two limits, both deliberate.** Multi-step goals ("open whatsapp and message
+ammi") are not launch intents — narrowing for a whole task would leave the agent
+unable to act after the launch and treat the task as done at step one. And the
+resolver matches exact → prefix → contains, stopping at the first tier with
+exactly one candidate; anything ambiguous returns null and falls back to ordinary
+planning, because a wrong resolution would make the wrong app *the only reachable
+outcome*.
+
+**Scope, honestly.** One narrow class of goal. Not a general solution to semantic
+selection, and the paper must not present it as one — the substitution surface
+still has to measure where model capacity binds. What it demonstrates is the
+method: *when a goal's correct action is determinable without the model's
+judgement, remove the judgement.*
+
+**Pending measurement (E21b).** Re-run "open whatsapp" on device and confirm it
+launches WhatsApp rather than the dialer.
+
+---
+
 ## Open measurements
 
 Required before publication. Listed here so gaps are visible rather than
@@ -629,4 +676,5 @@ discovered late.
 | E18b | Re-run "open whatsapp" with repetition guard + screen grammar | needs gateway service |
 | E19 | Task success and token cost, screen-grounded vs base grammar | Phase 7 |
 | E20 | Does a router model close the semantic-selection gap (E18b)? | Phase 3 |
+| E21b | On-device confirmation that E21 opens the right app | needs device |
 | E21 | Grammar restricted to launch_app when the goal names an app | Phase 3 |

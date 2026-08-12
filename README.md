@@ -30,6 +30,7 @@ repeated tasks drop from *N* model calls to zero.
 | [`docs/DECISIONS.md`](docs/DECISIONS.md) | every deviation from the spec, with evidence and how to reverse it |
 | [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md) | every measurement, with the configuration that produced it |
 | [`docs/PHASE1.md`](docs/PHASE1.md) | Phase 1 walkthrough and defence preparation |
+| [`docs/PHASE5.md`](docs/PHASE5.md) | Phase 5 (C1′) walkthrough and defence preparation |
 | [`docs/paper/OUTLINE.md`](docs/paper/OUTLINE.md) | paper structure, claims mapped to supporting experiments |
 
 Two rules this repository holds itself to, both learned the hard way on day one:
@@ -54,11 +55,11 @@ See [`docs/PHASE1.md`](docs/PHASE1.md).
 |---|---|---|
 | 0 | KMP module graph, §9 interfaces, §10 schemas, §10.6 grammar, CI | ✅ done |
 | 1 | llama.cpp JNI, mmap load, GBNF sampler, thermal telemetry | ✅ working |
-| 2 | AccessibilityDriver, perception, executor + precondition gate | ◐ gate done, driver next |
-| 3 | Planner in the loop, end-to-end PLAN path | mid-year demo |
+| 2 | AccessibilityDriver, perception, executor + precondition gate | ✅ done |
+| 3 | Planner in the loop, end-to-end PLAN path | ✅ running on device |
 | 4 | Verifier + self-healing — **C2** | |
-| 5 | Skill compiler + replay — **C1′** | |
-| 6 | Gateway, capability sandbox, second client | |
+| 5 | Skill compiler + replay — **C1′** | ✅ core done, E17 pending |
+| 6 | Gateway, capability sandbox, second client | ◐ gateway + adb client done |
 | 7 | AXON-Bench + ablation matrix — **C3/C5** | |
 | 8 | Hardening, thesis, defence | |
 
