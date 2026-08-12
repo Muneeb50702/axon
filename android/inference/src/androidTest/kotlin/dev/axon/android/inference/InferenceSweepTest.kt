@@ -80,11 +80,18 @@ class InferenceSweepTest {
                 PlannerPrompt.user(case.state, case.goal),
             )
 
-            val r = engine.generateInstrumented(
-                prompt = prompt,
-                grammar = if (useGrammar) ActionGrammar.GBNF else null,
-                maxTokens = maxTokens,
-            )
+            // Energy is measured around the generation, not inside it: the
+            // sampler runs on a separate coroutine so the work being measured is
+            // not slowed by the measuring, which would inflate the very number
+            // being taken.
+            val probe = EnergyProbe(InstrumentationRegistry.getInstrumentation().targetContext)
+            val (r, energy) = probe.measure {
+                engine.generateInstrumented(
+                    prompt = prompt,
+                    grammar = if (useGrammar) ActionGrammar.GBNF else null,
+                    maxTokens = maxTokens,
+                )
+            }
 
             Log.i(TAG, buildString {
                 append("\n--- RESULT ${model.name} t=$threads/$threadsBatch ctx=$ctx grammar=$useGrammar ---\n")
@@ -99,6 +106,11 @@ class InferenceSweepTest {
                 append("total             : ${r.result.latencyMs} ms\n")
                 append("prefill share     : %.0f%%\n".format(r.prefillShare * 100))
                 append("thermal           : ${r.thermalAfter}\n")
+                append("energy            : ${energy.render()}\n")
+                if (energy.plausible) {
+                    append("  J above idle    : %.2f J\n".format(energy.joulesAboveIdle))
+                    append("  planning steps  : ~${energy.tasksPerCharge()} per full charge\n")
+                }
                 append("avail mem after   : ${readAvailableMemMb()} MB\n")
                 append("stopped on EOG    : ${r.stoppedOnEog}\n")
                 append("output            : ${r.result.text.trim().take(300)}\n")

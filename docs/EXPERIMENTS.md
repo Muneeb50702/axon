@@ -329,6 +329,60 @@ generates no heat.
 
 ---
 
+## E15 — Energy per planning step
+
+*2026-08-11 · `39ac4d0` · Gemma 3 1B Q4_K_M · grammar-constrained · 4/8 threads ·
+`n_ctx` 2048 · `max_tokens` 48 · battery 89%, thermal `NONE`, screen on ·
+artefact: instrumented `InferenceSweepTest`*
+
+| | |
+|---|---|
+| prompt / output tokens | 800 / 31 |
+| wall clock | 60.4 s (prefill 45.1 s, decode 15.3 s) |
+| current during work | 358 mA |
+| idle baseline | 185 mA |
+| **energy above idle** | **83.3 J** |
+| energy total | 126.4 J |
+| samples | 239 @ 250 ms |
+| **planning steps per 5000 mAh charge** | **~831** |
+
+**Why this metric is worth introducing.** On-device agent papers report latency
+and task success. Almost none report joules — yet on a battery device joules are
+the binding constraint. A user does not abandon an assistant because it took a
+minute; they abandon it because it cost 8% of their battery.
+
+**What it makes concrete.** A six-step cold task costs roughly **500 J**, about
+0.7% of a full charge, and the device can serve ~138 such tasks before flat. A
+compiled skill replay performs the same task with **zero model invocations** and
+therefore essentially zero inference energy. That reframes C1′ in the terms the
+person holding the phone actually experiences: not "5× faster" but *"the
+difference between 138 tasks per charge and effectively unbounded"*.
+
+It also gives the scaffolding-versus-scale trade (POSITIONING §3.1) a second
+axis. A larger model does not merely take longer per step — it costs more charge
+per task, and on a 5000 mAh pack that is a hard ceiling rather than an
+inconvenience.
+
+**Method, and its limits, stated plainly.** `BATTERY_PROPERTY_CURRENT_NOW` is
+whole-device current from the fuel gauge, not per-process. The figure reported is
+therefore a **differential**: mean current during the work minus an idle baseline
+sampled immediately before, which subtracts screen, radios and background apps to
+first order. Pack voltage is assumed at the 3.85 V Li-ion nominal midpoint, since
+Android does not expose instantaneous voltage on every device — a few percent
+error across the usable range.
+
+This is **not** a power monitor, and the paper must say so. It is enough to
+compare configurations on one device, which is the comparison the argument needs.
+An external power monitor would be the obvious strengthening, and is the kind of
+equipment a lab has and a student does not.
+
+**Threat to validity.** n = 1, screen on, charging over USB. Screen draw is in
+the baseline and largely subtracts out, but charging current is not stationary
+and could bias the delta. Repeat on battery with the screen off via a foreground
+service before publishing (E16).
+
+---
+
 ## Open measurements
 
 Required before publication. Listed here so gaps are visible rather than
@@ -343,4 +397,6 @@ discovered late.
 | E11 | Vulkan vs CPU backend (D8) | Vulkan build + Mali driver validation |
 | E12 | Quantisation vs task success (Q4_K_M / Q3_K_M / Q2_K_XL) | Phase 7 |
 | E13 | Prefill cost with KV prefix reuse | Phase 3 |
-| E14 | Variance across repeated runs for E2, E3 | rerun with n ≥ 5 |
+| E14 | Variance across repeated runs for E2, E3, E15 | rerun with n ≥ 5 |
+| E16 | Energy on battery, screen off, foreground service | Phase 6 |
+| E17 | Energy per task: cold PLAN vs compiled replay — the C1′ headline in joules | Phase 5 |
