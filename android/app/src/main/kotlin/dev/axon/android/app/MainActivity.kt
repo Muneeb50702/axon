@@ -1,6 +1,8 @@
 package dev.axon.android.app
 
+import android.content.Intent
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -9,93 +11,268 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import dev.axon.core.inference.ActionGrammar
 import dev.axon.core.model.DeviceAction
+import dev.axon.core.model.PostCondition
+import dev.axon.core.model.PostConditionType
+import dev.axon.core.model.Target
+import dev.axon.core.model.TargetBy
+import dev.axon.core.model.VerifyResult
+import kotlinx.coroutines.launch
 
 /**
- * Phase 0 shell (spec §13): the app launches and reports what is actually wired.
+ * Phase 2 demo surface (spec §13).
  *
- * Deliberately a status screen rather than a mock of the finished UI. The Phase 0
- * acceptance criterion is "empty app launches", and a screen that reads live
- * values out of `:core` proves something a hardcoded mock cannot — that the
- * portable core is on the Android classpath and its contracts resolve at runtime,
- * not merely at compile time.
+ * > *Accept: agent can perform a single correct action on a real app from a
+ * > hand-written plan; impossible actions are rejected pre-execution.*
+ *
+ * The screen is built around demonstrating the **second** half, because the
+ * first is unremarkable — any automation library can tap a button. What
+ * distinguishes AXON is that a well-formed action naming an element that is not
+ * on screen is refused *before the device is touched*, and this UI makes that
+ * refusal visible rather than a log line.
+ *
+ * Showing the perceived element list also does something the system permission
+ * screen cannot: Android says AXON "can view and control your screen", which is
+ * true and uninformative. This shows exactly what that means — every element
+ * AXON can see, and the count of fields it refused to read under §16.
  */
 class MainActivity : ComponentActivity() {
+
+    private lateinit var controller: AgentController
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        controller = AgentController(this)
         enableEdgeToEdge()
-        setContent { AxonApp() }
+        setContent { AxonApp(controller) }
     }
 }
 
 @Composable
-private fun AxonApp() {
+private fun AxonApp(controller: AgentController) {
     MaterialTheme(colorScheme = darkColorScheme()) {
-        Surface(modifier = Modifier.fillMaxSize()) {
+        Surface(Modifier.fillMaxSize()) {
             Scaffold { padding ->
+                val scope = rememberCoroutineScope()
+                val context = LocalContext.current
+                val state by controller.state.collectAsState()
+
+                var targetText by remember { mutableStateOf("") }
+                var serviceOn by remember { mutableStateOf(controller.isServiceEnabled()) }
+
                 Column(
-                    modifier = Modifier
+                    Modifier
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
                         .padding(padding)
-                        .padding(24.dp),
+                        .padding(20.dp),
                 ) {
                     Text("AXON", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
                     Text(
-                        "Agentic eXecution & Orchestration Nucleus",
-                        style = MaterialTheme.typography.bodyMedium,
+                        controller.deviceFamily,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Spacer(Modifier.height(24.dp))
 
-                    PhaseCard(
-                        phase = "Phase 0 — Scaffolding",
-                        status = "complete",
-                        done = true,
-                        detail = "KMP module graph, §9 interface contracts, §10 schemas, " +
-                            "§10.6 action grammar. Core carries no Android dependency.",
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    PhaseCard(
-                        phase = "Phase 1 — Inference + constrained output",
-                        status = "next",
-                        done = false,
-                        detail = "llama.cpp JNI, mmap model load, GBNF sampler, thermal telemetry.",
-                    )
+                    Spacer(Modifier.height(20.dp))
 
-                    Spacer(Modifier.height(24.dp))
-                    Text("Live from :core", style = MaterialTheme.typography.titleMedium)
+                    // ---- permission gate ----
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp)) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("Accessibility service", fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    if (serviceOn) "connected" else "not enabled",
+                                    color = if (serviceOn) Color(0xFF7DD3FC) else Color(0xFFFCA5A5),
+                                )
+                            }
+                            if (!serviceOn) {
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    "AXON cannot see the screen until you enable it. It cannot turn " +
+                                        "itself on — only you can, and only by hand.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                OutlinedButton(onClick = {
+                                    context.startActivity(
+                                        Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                                    )
+                                }) { Text("Open accessibility settings") }
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedButton(onClick = { serviceOn = controller.isServiceEnabled() }) {
+                                Text("Re-check")
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+
+                    // ---- perception ----
+                    Button(
+                        onClick = { scope.launch { controller.perceive() } },
+                        enabled = serviceOn,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Capture what AXON sees") }
+
+                    state.compact?.let { compact ->
+                        Spacer(Modifier.height(12.dp))
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(16.dp)) {
+                                Text(compact.foregroundPackage, fontWeight = FontWeight.SemiBold)
+                                compact.screenTitle?.let {
+                                    Text(it, style = MaterialTheme.typography.bodySmall)
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    "${compact.elements.size} interactable elements",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                if (compact.sensitiveWithheld > 0) {
+                                    // §16 made visible. A guardrail the user cannot
+                                    // observe is a guardrail they have to take on faith.
+                                    Text(
+                                        "${compact.sensitiveWithheld} sensitive field(s) refused",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color(0xFFFDE047),
+                                    )
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    compact.elements.joinToString("\n") { it.render() },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(20.dp))
+
+                    // ---- the acceptance demo ----
+                    Text("Run one action", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Type a label from above to tap it. Type something that is NOT there to " +
+                            "watch the precondition gate refuse it before the device is touched.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = targetText,
+                        onValueChange = { targetText = it },
+                        label = { Text("element label") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                controller.runOnce(
+                                    DeviceAction.Tap(
+                                        target = Target(TargetBy.TEXT, targetText),
+                                        expect = PostCondition(
+                                            PostConditionType.NODE_ABSENT,
+                                            targetText,
+                                        ),
+                                    ),
+                                )
+                            }
+                        },
+                        enabled = serviceOn && targetText.isNotBlank() && state.compact != null,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Tap it") }
 
-                    // Read at runtime from the shared module — this is the part
-                    // that makes the screen evidence rather than decoration.
-                    Fact("action types", DeviceAction.ACTION_TYPES.size.toString())
-                    Fact("grammar productions", ActionGrammar.SOURCE.countProductions().toString())
-                    Fact("grammar literals", ActionGrammar.literals().size.toString())
+                    state.lastOutcome?.let { outcome ->
+                        Spacer(Modifier.height(12.dp))
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(16.dp)) {
+                                val headline = when {
+                                    !outcome.preOk -> "REJECTED before the device was touched"
+                                    outcome.postOk == true -> "action verified"
+                                    else -> "acted, but the post-condition did not hold"
+                                }
+                                Text(
+                                    headline,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = when {
+                                        !outcome.preOk -> Color(0xFFFDE047)
+                                        outcome.postOk == true -> Color(0xFF7DD3FC)
+                                        else -> Color(0xFFFCA5A5)
+                                    },
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    when (val r = outcome.actResult) {
+                                        is dev.axon.core.model.ActResult.Failed -> r.reason
+                                        is dev.axon.core.model.ActResult.Refused -> r.reason
+                                        is dev.axon.core.model.ActResult.Dispatched -> r.detail
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                (outcome.verifyResult as? VerifyResult.Mismatch)?.let { m ->
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(
+                                        "expected ${m.expected}\nobserved ${m.observed}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    "${outcome.latencyMs} ms",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                            }
+                        }
+                    }
+
+                    state.error?.let {
+                        Spacer(Modifier.height(12.dp))
+                        Text(it, color = Color(0xFFFCA5A5), style = MaterialTheme.typography.bodySmall)
+                    }
 
                     Spacer(Modifier.height(24.dp))
                     Text(
-                        "Not yet connected: accessibility service, model weights, gateway. " +
-                            "This build cannot operate your device.",
+                        "No network permission. Nothing AXON sees can leave this phone.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -104,48 +281,3 @@ private fun AxonApp() {
         }
     }
 }
-
-@Composable
-private fun PhaseCard(phase: String, status: String, done: Boolean, detail: String) {
-    Card(modifier = Modifier.fillMaxSize()) {
-        Column(Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxSize(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(phase, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                Text(
-                    status,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (done) Color(0xFF7DD3FC) else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Spacer(Modifier.height(6.dp))
-            Text(
-                detail,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-@Composable
-private fun Fact(label: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxSize(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(label, style = MaterialTheme.typography.bodyMedium)
-        Text(value, style = MaterialTheme.typography.bodyMedium, fontFamily = FontFamily.Monospace)
-    }
-}
-
-/** Count `name ::=` rules, ignoring comments and continuation lines. */
-private fun String.countProductions(): Int =
-    lineSequence().count { Regex("^\\s*[a-z][a-z0-9-]*\\s*::=").containsMatchIn(it) }
-
-@Preview
-@Composable
-private fun AxonAppPreview() = AxonApp()
