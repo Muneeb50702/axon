@@ -466,6 +466,37 @@ perceives the app it is operating rather than its own UI.
 
 ---
 
+## O1 — Force-stop revokes the accessibility grant
+
+*Operational finding, 2026-08-12. Not an experiment; recorded because it will
+recur and because it has a methodological consequence.*
+
+`adb shell am force-stop dev.axon.android` **permanently disables AXON's
+accessibility service.** Android treats force-stop as a signal that the app is
+untrusted and drops it from `enabled_accessibility_services`; the setting is not
+restored when the app next starts. Every subsequent run failed with
+`accessibility service is not enabled` until the user re-enabled it by hand.
+
+**Consequences for the evaluation.** Any benchmark harness that force-stops
+between runs — a natural way to get a clean process state — silently disables the
+thing under test. The failure presents as the agent being unable to see the
+screen, which is easy to misread as a driver bug. Restarting the *process* is
+fine; force-stopping the *app* is not.
+
+**Consequence for the guardrail.** The permission can be restored from adb with
+`settings put secure enabled_accessibility_services`, and it was deliberately not
+done that way here. §16 states that only the user enables the service, by hand,
+and the app's own UI says so; re-granting it through a shell backdoor during
+development would make the developer an exception to a guarantee the thesis
+claims is structural. The cost is ten seconds of manual work per occurrence,
+which is the correct price.
+
+Worth a line in the paper's deployment-substrate section: platform security
+mechanisms interact with agent research in ways that look like bugs. This one
+costs a confused hour if you have not seen it before.
+
+---
+
 ## Open measurements
 
 Required before publication. Listed here so gaps are visible rather than
