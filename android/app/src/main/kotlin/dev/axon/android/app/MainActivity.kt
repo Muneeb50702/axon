@@ -45,6 +45,7 @@ import dev.axon.core.model.PostConditionType
 import dev.axon.core.model.Target
 import dev.axon.core.model.TargetBy
 import dev.axon.core.model.VerifyResult
+import dev.axon.core.planner.describeForPrompt
 import kotlinx.coroutines.launch
 
 /**
@@ -67,17 +68,24 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
 
     private lateinit var controller: AgentController
+    private lateinit var agent: AxonAgent
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         controller = AgentController(this)
+        agent = AxonAgent(this)
         enableEdgeToEdge()
-        setContent { AxonApp(controller) }
+        setContent { AxonApp(controller, agent) }
+    }
+
+    override fun onDestroy() {
+        agent.close()
+        super.onDestroy()
     }
 }
 
 @Composable
-private fun AxonApp(controller: AgentController) {
+private fun AxonApp(controller: AgentController, agent: AxonAgent) {
     MaterialTheme(colorScheme = darkColorScheme()) {
         Surface(Modifier.fillMaxSize()) {
             Scaffold { padding ->
@@ -86,7 +94,9 @@ private fun AxonApp(controller: AgentController) {
                 val state by controller.state.collectAsState()
 
                 var targetText by remember { mutableStateOf("") }
+                var goalText by remember { mutableStateOf("") }
                 var serviceOn by remember { mutableStateOf(controller.isServiceEnabled()) }
+                val agentState by agent.state.collectAsState()
 
                 Column(
                     Modifier
@@ -269,6 +279,79 @@ private fun AxonApp(controller: AgentController) {
                         Spacer(Modifier.height(12.dp))
                         Text(it, color = Color(0xFFFCA5A5), style = MaterialTheme.typography.bodySmall)
                     }
+
+                    Spacer(Modifier.height(28.dp))
+
+                    // ---- the full agent loop (§7.2) ----
+                    Text("Run a task", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "The whole loop: perceive → plan → gate → act → verify, repeating until " +
+                            "the budget runs out. Roughly a minute per step on this device, which " +
+                            "is exactly why compiled skills matter.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text(agentState.status, style = MaterialTheme.typography.bodySmall)
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedButton(
+                                onClick = { scope.launch { agent.load() } },
+                                enabled = !agentState.running && agentState.modelId == null,
+                            ) { Text("Load model") }
+
+                            agentState.lastResult?.let { r ->
+                                Spacer(Modifier.height(10.dp))
+                                Text(
+                                    "${r.outcome}",
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (r.outcome.name == "SUCCESS") Color(0xFF7DD3FC)
+                                    else Color(0xFFFDE047),
+                                )
+                                Text(
+                                    "${r.steps.size} steps · ${r.llmCalls} model calls · " +
+                                        "${r.totalMs / 1000}s · ${r.healAttempts} heals",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                r.steps.forEachIndexed { i, step ->
+                                    Text(
+                                        "${i + 1}. ${if (step.committed) "ok " else if (!step.preOk) "gated" else "miss"} " +
+                                            step.action.describeForPrompt(),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = if (step.committed) MaterialTheme.colorScheme.onSurface
+                                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = goalText,
+                        onValueChange = { goalText = it },
+                        label = { Text("what should AXON do?") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                agent.run(
+                                    dev.axon.core.model.Goal(goalText, stepBudget = 4),
+                                )
+                            }
+                        },
+                        enabled = serviceOn && agentState.modelId != null &&
+                            !agentState.running && goalText.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(if (agentState.running) "running…" else "Run") }
 
                     Spacer(Modifier.height(24.dp))
                     Text(
