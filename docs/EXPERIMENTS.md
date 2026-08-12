@@ -656,6 +656,72 @@ launches WhatsApp rather than the dialer.
 
 ---
 
+## E17 — Cold planning vs compiled replay: **the C1′ headline**
+
+*2026-08-12 · `af9c73d` · Gemma 3 1B Q4_K_M · TECNO Camon 20 · 2 steps ·
+screen-grounded grammar · synthetic driver · battery ~89%*
+
+Both arms perform the **same two actions** against the **same screens**. The only
+difference is where the actions come from — a generation per step, or a frozen
+`CompiledSkill`. That isolates exactly the quantity C1′ claims to remove: the
+cost of consulting the model.
+
+| | cold PLAN | compiled REPLAY |
+|---|---|---|
+| model calls | 2 | **0** |
+| output tokens | 62 | — |
+| **wall clock** | **142,917 ms** | **17 ms** |
+| inference energy | 89.05 J above idle | **0 J** (exact — none occurred) |
+| outcome | — | SUCCESS, fully deterministic |
+
+### **Speedup: 8,407×**
+
+§13's O4 acceptance criterion asks for *"≥5× faster than a cold LLM run"*. The
+measured figure is three orders of magnitude beyond it, because on this hardware
+a planning step is not a little slow — it is 71 seconds.
+
+### What is NOT claimable, and why the first run printed it anyway
+
+The harness initially reported an **energy ratio of 56,119×**. That number is an
+artefact and has been removed from the output.
+
+Replay completes in ~17 ms; [EnergyProbe] samples every 250 ms. The replay arm
+therefore yields **one sample** — its energy is *below the instrument's
+resolution*, not measured as zero. Dividing by it produces a spectacular figure
+that means nothing. The tooling now prints the sample count and the probe
+interval instead, and states the defensible claim:
+
+> Inference energy is **89.05 J cold and exactly 0 J on replay** — exact rather
+> than measured, because no inference occurred.
+
+Also note the cold arm's mean current (161 mA) came out *below* the idle baseline
+(193 mA), which is why `joulesAboveIdle` (89 J) is well under `joulesTotal`
+(196 J). Whole-device current is noisy over a 143-second window and the baseline
+was sampled in a different thermal state. **The energy figures are order-of-
+magnitude indicators, not precise measurements**, and the paper must say so. An
+external power monitor is the fix (E16).
+
+### What this makes concrete
+
+A six-step task: **~7 minutes cold, ~50 ms replayed.** The user-facing claim is
+not "5× faster" but *the difference between a task you would never wait for and
+one that is instant* — and on a battery device, between ~138 tasks per charge and
+a number bounded by something other than energy.
+
+### Threats to validity
+
+- **n = 1.** Repeat with n ≥ 5 before publishing (E14).
+- **Synthetic driver.** Deliberate: on a live app the cold arm frequently picks
+  the *wrong* element (E18b), and the comparison would then measure task success
+  rather than decision cost. It also means the replay figure excludes real
+  gesture dispatch and UI settle time, which would add a few hundred ms — still
+  leaving three orders of magnitude.
+- **The skill was hand-written**, not compiled from a live run, because obtaining
+  two clean runs on a real app needs the planner to choose correctly twice.
+  `SkillCompilerTest` covers the compiler producing this shape.
+
+---
+
 ## Open measurements
 
 Required before publication. Listed here so gaps are visible rather than
@@ -672,7 +738,7 @@ discovered late.
 | E13 | Prefill cost with KV prefix reuse | Phase 3 |
 | E14 | Variance across repeated runs for E2, E3, E15 | rerun with n ≥ 5 |
 | E16 | Energy on battery, screen off, foreground service | Phase 6 |
-| E17 | Energy per task: cold PLAN vs compiled replay — the C1′ headline in joules | Phase 5 |
+
 | E18b | Re-run "open whatsapp" with repetition guard + screen grammar | needs gateway service |
 | E19 | Task success and token cost, screen-grounded vs base grammar | Phase 7 |
 | E20 | Does a router model close the semantic-selection gap (E18b)? | Phase 3 |
