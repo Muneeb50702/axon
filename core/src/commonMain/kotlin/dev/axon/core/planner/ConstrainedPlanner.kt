@@ -2,6 +2,7 @@ package dev.axon.core.planner
 
 import dev.axon.core.inference.ActionGrammar
 import dev.axon.core.inference.InferenceEngine
+import dev.axon.core.inference.ScreenGrammar
 import dev.axon.core.model.ActionMenu
 import dev.axon.core.model.AxonJson
 import dev.axon.core.model.CompactState
@@ -52,6 +53,15 @@ public class ConstrainedPlanner(
      * rather than to two subtly different programs.
      */
     private val constrained: Boolean = true,
+
+    /**
+     * Restrict `target.value` to the labels actually on screen (E18).
+     *
+     * With this on, a hallucinated target is not caught by the precondition gate
+     * — it is unreachable at the sampler. Off by default only so the ablation can
+     * measure what it buys; on in the shipping configuration.
+     */
+    private val screenGrounded: Boolean = true,
 ) : Planner {
 
     override suspend fun nextAction(
@@ -74,9 +84,17 @@ public class ConstrainedPlanner(
         // Truncation is different — it is a length accident, and a second attempt
         // with a larger budget genuinely differs.
         repeat(2) { attempt ->
+            // Rebuilt each step, because the screen changes. Parsing a
+            // ~40-element grammar costs microseconds against a ~50 s step.
+            val grammar = when {
+                !constrained -> null
+                screenGrounded -> ScreenGrammar.forScreen(state)
+                else -> ActionGrammar.GBNF
+            }
+
             val result = engine.generate(
                 prompt = PlannerPrompt.SYSTEM + "\n\n" + prompt,
-                grammar = if (constrained) ActionGrammar.GBNF else null,
+                grammar = grammar,
                 maxTokens = if (attempt == 0) maxTokens else maxTokens * 2,
             )
             calls++

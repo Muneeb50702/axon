@@ -383,6 +383,89 @@ service before publishing (E16).
 
 ---
 
+## E18 — Prompt-based self-healing fails at ~1B
+
+*2026-08-12 · `9706b79` · Gemma 3 1B Q4_K_M · live device, full loop ·
+goal: "open whatsapp" · `stepBudget` 4, `healBudget` 2*
+
+```
+ESCALATED — 3 steps, 3 model calls, 182 s, 3 heals
+  1. gated  tap content_desc="Whatsapp"
+  2. gated  tap content_desc="Whatsapp"
+  3. gated  tap content_desc="Whatsapp"
+```
+
+**Every safety mechanism worked.** The grammar produced a well-formed action each
+time; the precondition gate refused all three, so the device was never touched;
+the heal budget stopped the run after three attempts rather than spending all
+fifteen steps; and it escalated to the user instead of failing silently.
+
+**The finding is what the model did in between.** `FailureContext` was populated
+and rendered into the prompt on attempts 2 and 3, naming the failed action
+explicitly and instructing *"already tried and failed on this screen … choose a
+DIFFERENT action."* The model repeated itself anyway, twice.
+
+That is worth reporting as a result rather than patching around quietly:
+**prompt-based self-healing does not hold at ~1B.** The instruction is present
+and comprehensible; it simply does not outweigh whatever made the action look
+best initially, and nothing about the screen has changed to make it look worse.
+
+Two secondary observations from the same run:
+
+- The model chose `tap` over `launch_app` despite an explicit prompt rule
+  (*"To open an app, use launch_app with its package name"*). Instruction-following
+  degrades in the same way.
+- It was perceiving AXON's own UI, since the agent runs inside the Activity. The
+  §7.9 gateway foreground service is what fixes that, and this run is the
+  argument for prioritising it.
+
+### Response: two structural constraints, not a better prompt
+
+Consistent with §2.3 — *"make the model's freedom smaller"* — the response is to
+make the failure unreachable rather than discouraged.
+
+1. **`RepetitionGuard`.** An action that failed on a given screen cannot be
+   re-proposed while that screen is unchanged. Keyed on `(screenHash, action)`
+   rather than action alone, because tapping "Send" can fail on one screen and be
+   correct two screens later; blacklisting outright would break the task the
+   agent was blocked from starting.
+
+2. **`ScreenGrammar`.** The grammar is specialised each step so `target.value`
+   can only be a label present on the current screen. `"Whatsapp"` is not in the
+   alternation, so **the sampler cannot produce it** — a hallucinated target stops
+   being caught and becomes unreachable.
+
+The second is the more interesting one. The base grammar constrains the *shape*
+of an action; this constrains its *reference*. The precondition gate is demoted
+from primary defence to backstop, which is where a runtime check belongs when a
+decoding constraint can do the job.
+
+| mechanism | makes impossible | when |
+|---|---|---|
+| GBNF grammar (C3) | malformed actions | during sampling |
+| **screen grammar (C3′)** | **naming an element that is not there** | **during sampling** |
+| repetition guard | re-proposing a failed action here | before acting |
+| precondition gate (§7.5) | anything the above missed | before acting |
+
+**Costs, stated.** The grammar is rebuilt per step (microseconds against a ~50 s
+step). Labels are capped at 40 to match what the planner is shown, so an element
+beyond the cap is unnameable and must be scrolled to. `launch_app` stays
+unconstrained by screen, since package names are deliberately not on screen. An
+empty screen falls back to the base grammar, or the agent would have no legal
+move at all (§17).
+
+**Validation.** `tools/check-grammar.sh` now validates the *specialised* grammar
+too, built from real corpus labels — the generated grammar is the one that
+reaches the sampler, and it is assembled from untrusted app text that can contain
+quotes and backslashes. An unescaped label produces a parse failure, and a parse
+failure means llama.cpp silently declines to constrain generation at all.
+
+**Not yet measured.** Whether screen grounding raises task success, and what it
+costs in tokens. That is E19, and it needs the gateway service first so the agent
+perceives the app it is operating rather than its own UI.
+
+---
+
 ## Open measurements
 
 Required before publication. Listed here so gaps are visible rather than
@@ -400,3 +483,5 @@ discovered late.
 | E14 | Variance across repeated runs for E2, E3, E15 | rerun with n ≥ 5 |
 | E16 | Energy on battery, screen off, foreground service | Phase 6 |
 | E17 | Energy per task: cold PLAN vs compiled replay — the C1′ headline in joules | Phase 5 |
+| E18b | Re-run "open whatsapp" with repetition guard + screen grammar | needs gateway service |
+| E19 | Task success and token cost, screen-grounded vs base grammar | Phase 7 |

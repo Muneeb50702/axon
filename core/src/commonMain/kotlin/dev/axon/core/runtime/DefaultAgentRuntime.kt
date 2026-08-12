@@ -71,6 +71,7 @@ public class DefaultAgentRuntime(
 ) : AgentRuntime {
 
     private var cancelled = false
+    private val repetition = RepetitionGuard()
 
     override suspend fun execute(goal: Goal): TaskResult {
         val steps = mutableListOf<StepOutcome>()
@@ -80,6 +81,7 @@ public class DefaultAgentRuntime(
         val started = nowMs()
 
         executor.reset()
+        repetition.reset()
         cancelled = false
 
         var failure: FailureContext? = null
@@ -98,6 +100,34 @@ public class DefaultAgentRuntime(
             val decision = planner.nextAction(state, goal, ActionMenu.forScreen(state), failure)
             llmCalls += decision.llmCalls
 
+            // 2b. REPETITION GUARD (E18)
+            //
+            // Measured, not defensive: asked to open an app, the planner proposed
+            // the identical rejected action three times despite the failure
+            // context naming it and asking for something different. Prompt-based
+            // healing does not hold at ~1B, so repetition is made structurally
+            // impossible rather than discouraged.
+            //
+            // `wait` is exempt — waiting twice on an unchanged screen is the
+            // whole point of waiting.
+            if (decision.action !is DeviceAction.Wait &&
+                repetition.isBlocked(tree.contentHash, decision.action)
+            ) {
+                heals++
+                exhausted += decision.action
+                failure = FailureContext(
+                    attemptedAction = decision.action,
+                    expected = decision.action.expect,
+                    observed = "you already tried this on this exact screen and it failed",
+                    attempt = exhausted.size,
+                    exhausted = exhausted.toList(),
+                )
+                if (exhausted.size > goal.healBudget) {
+                    return result(goal, steps, llmCalls, started, TaskOutcome.ESCALATED, heals, healsSucceeded)
+                }
+                continue
+            }
+
             // 3-5. VALIDATE → ACT → VERIFY
             val outcome = executor.run(decision.action, tree)
             steps += outcome
@@ -111,6 +141,7 @@ public class DefaultAgentRuntime(
             }
 
             // --- self-heal (§7.6) ---
+            repetition.recordFailure(tree.contentHash, decision.action)
             heals++
             if (heals > goal.healBudget * goal.stepBudget) {
                 return result(goal, steps, llmCalls, started, TaskOutcome.ESCALATED, heals, healsSucceeded)

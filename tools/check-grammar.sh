@@ -36,5 +36,11 @@ if [[ ! -x "$BUILD/gbnf-check" ]]; then
     cmake --build "$BUILD" --target gbnf-check -j "$(nproc)" > /dev/null
 fi
 
-echo "==> validating"
+echo "==> validating base grammar"
 "$BUILD/gbnf-check" "$GRAMMAR" root
+
+# The specialised grammar is what actually reaches the sampler at run time, and
+# it is built from live app labels — untrusted text that can contain quotes and
+# backslashes. Validating only the base grammar would leave that unchecked.
+echo "==> validating screen-grounded grammar"
+"$BUILD/gbnf-check" "$ROOT/bench/build/axon-screen.gbnf" root
