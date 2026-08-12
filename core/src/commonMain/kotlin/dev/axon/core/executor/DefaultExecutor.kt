@@ -63,6 +63,16 @@ public class DefaultExecutor(
     private val settleMs: Long = DEFAULT_SETTLE_MS,
 
     private val nowMs: () -> Long,
+
+    /**
+     * Approves irreversible actions before they are dispatched (§16).
+     *
+     * Defaults to [ConfirmationGate.DENY]. An executor built without one cannot
+     * perform irreversible actions at all, which is the correct failure
+     * direction: forgetting to wire this up yields an agent that declines to
+     * send messages, not one that sends them silently.
+     */
+    private val confirmation: ConfirmationGate = ConfirmationGate.DENY,
 ) : Executor {
 
     private var spent: Int = 0
@@ -89,9 +99,36 @@ public class DefaultExecutor(
         spent++
 
         // ---- gate 2: precondition ------------------------------------------
-        when (val gate = PreconditionGate.check(action, state)) {
+        val resolved = when (val gate = PreconditionGate.check(action, state)) {
             is GateResult.Rejected -> return rejected(action, state, gate.failure, started, gate)
-            is GateResult.Allowed -> Unit
+            is GateResult.Allowed -> gate.node
+        }
+
+        // ---- gate 3: §16 irreversibility ------------------------------------
+        //
+        // Added after E18b, where the agent opened a dialer with five steps of
+        // unconstrained budget left. Nothing had gone wrong; nothing was stopping
+        // the next step from being `tap "Call"`.
+        //
+        // The capability sandbox already covers the skill path, where a manifest
+        // declares what a skill does. On the PLAN path there is no manifest —
+        // the planner proposes a tap and nothing in the action says whether that
+        // element sends money. Irreversibility is therefore inferred from the
+        // target, deterministically, before dispatch.
+        val reason = ConfirmationPolicy.requiresConfirmation(action, resolved, state)
+        if (reason != null && !confirmation.confirm(reason)) {
+            return StepOutcome(
+                action = action,
+                preOk = true,
+                // Never evaluated: the action did not happen. Distinct from a
+                // failure, and the trace must not claim the world was checked.
+                postOk = null,
+                actResult = ActResult.Refused(reason.verb, "user did not approve: ${reason.effect}"),
+                verifyResult = null,
+                latencyMs = nowMs() - started,
+                stateHashBefore = state.contentHash,
+                stateHashAfter = state.contentHash,
+            )
         }
 
         // ---- act ------------------------------------------------------------

@@ -5,6 +5,8 @@ import android.util.Log
 import dev.axon.android.driver.AccessibilityDriver
 import dev.axon.android.driver.AxonAccessibilityService
 import dev.axon.android.inference.LlamaEngine
+import dev.axon.core.executor.ConfirmationGate
+import dev.axon.core.executor.ConfirmationReason
 import dev.axon.core.executor.DefaultExecutor
 import dev.axon.core.model.CompactState
 import dev.axon.core.model.Goal
@@ -50,6 +52,23 @@ class AxonAgent(private val context: Context) {
 
     private val _state = MutableStateFlow(AgentState())
     val state: StateFlow<AgentState> = _state.asStateFlow()
+
+    /**
+     * How the user is asked to approve an irreversible action (§16).
+     *
+     * Defaults to refusing. Until a UI is wired in, AXON declines to place calls,
+     * send messages or spend money rather than doing them unasked — the correct
+     * direction to fail, since only one of those two mistakes can be undone.
+     *
+     * Phase 6 replaces this with a notification action, which is what §16's
+     * "explicit confirmation" needs to mean when the agent is operating another
+     * app and its own UI is not on screen.
+     */
+    var confirmationGate: ConfirmationGate = ConfirmationGate.DENY
+
+    /** The approval currently awaiting the user, if any. */
+    private val _pending = MutableStateFlow<ConfirmationReason?>(null)
+    val pending: StateFlow<ConfirmationReason?> = _pending.asStateFlow()
 
     val isServiceEnabled: Boolean get() = AxonAccessibilityService.isConnected
     val isModelLoaded: Boolean get() = engine != null
@@ -116,7 +135,11 @@ class AxonAgent(private val context: Context) {
             val runtime = DefaultAgentRuntime(
                 driver = driver,
                 planner = ConstrainedPlanner(eng),
-                executor = DefaultExecutor(driver, nowMs = System::currentTimeMillis),
+                executor = DefaultExecutor(
+                    driver,
+                    nowMs = System::currentTimeMillis,
+                    confirmation = confirmationGate,
+                ),
                 nowMs = System::currentTimeMillis,
                 goalReached = goalReached,
             )

@@ -77,8 +77,14 @@ class DefaultExecutorTest {
         override val deviceFamily: String = "fake/test"
     }
 
+    // ALLOW_FOR_TESTING because these fixtures tap "Send", which §16 now holds
+    // for confirmation. The gate itself is tested in ConfirmationPolicyTest;
+    // here it must not silently block the behaviour under test.
     private fun executor(driver: DeviceDriver, budget: Int = 15) =
-        DefaultExecutor(driver, budget = budget, settleMs = 0, nowMs = { 0L })
+        DefaultExecutor(
+            driver, budget = budget, settleMs = 0, nowMs = { 0L },
+            confirmation = ConfirmationGate.ALLOW_FOR_TESTING,
+        )
 
     // -----------------------------------------------------------------
 

@@ -97,7 +97,10 @@ class DefaultAgentRuntimeTest {
     ) = DefaultAgentRuntime(
         driver = driver,
         planner = planner,
-        executor = DefaultExecutor(driver, budget = budget, settleMs = 0, nowMs = { 0L }),
+        executor = DefaultExecutor(
+            driver, budget = budget, settleMs = 0, nowMs = { 0L },
+            confirmation = dev.axon.core.executor.ConfirmationGate.ALLOW_FOR_TESTING,
+        ),
         nowMs = { 0L },
         goalReached = goalReached,
     )
