@@ -41,9 +41,21 @@ import kotlinx.coroutines.launch
  * The persistent notification is usually described as a cost of using a
  * foreground service. Here it is the point. The same API that lets AXON read any
  * screen is the one a stalkerware app would use, and the only structural
- * difference available is that AXON *cannot* run without announcing itself:
- * Android tears down a foreground service that fails to post its notification.
- * The guarantee is enforced by the platform rather than promised by the app.
+ * difference available is that AXON *cannot* run without announcing itself.
+ *
+ * **An earlier version of this comment claimed the platform enforced that. It
+ * does not.** Since Android 13 `POST_NOTIFICATIONS` is a runtime permission, and
+ * a foreground service whose notification is suppressed still runs — invisibly.
+ * That build shipped and did exactly that: the permission was declared in the
+ * manifest, never requested, and the agent drove the device with nothing on the
+ * notification bar. "Foreground service" does not imply "visible".
+ *
+ * So the guarantee is enforced *here*, by [canBeSeen], and the enforcement is a
+ * refusal: if the user cannot see AXON operating, AXON does not operate. That is
+ * the same shape as every other guardrail in this project — make the unwanted
+ * behaviour impossible rather than discouraged — and it is worth stating in the
+ * thesis, because "we use a foreground service" is a weaker claim than it sounds
+ * on modern Android.
  *
  * Three further properties follow from the same reasoning:
  *
@@ -96,6 +108,25 @@ class AxonGatewayService : LifecycleService() {
             return
         }
 
+        // §16, guardrail 1, enforced rather than assumed.
+        //
+        // Since Android 13, POST_NOTIFICATIONS is a *runtime* permission, and a
+        // foreground service whose notification is suppressed still runs — it
+        // simply runs invisibly. That is exactly the covert operation §16
+        // forbids, and an earlier build permitted it: the permission was declared
+        // in the manifest, never requested, and the agent drove the device with
+        // nothing on the notification bar.
+        //
+        // "Foreground service" therefore does not imply "visible" on modern
+        // Android. The guarantee has to be checked, and the only honest response
+        // to failing it is to refuse the work. AXON does not get to operate the
+        // device on the user's behalf while hiding from them.
+        if (!canBeSeen()) {
+            Log.e(TAG, "refusing to run: notifications are blocked, so operation would be invisible")
+            stopSelf()
+            return
+        }
+
         currentTask = lifecycleScope.launch {
             val a = agent ?: return@launch
 
@@ -119,6 +150,20 @@ class AxonGatewayService : LifecycleService() {
                 .onSuccess { update("${it.outcome} — ${it.steps.size} steps, ${it.totalMs / 1000}s") }
                 .onFailure { update("error: ${it.message}") }
         }
+    }
+
+    /**
+     * Can the user actually see that AXON is running?
+     *
+     * `areNotificationsEnabled()` covers both the runtime permission and the
+     * user having muted the channel. Either way the answer is the same: if
+     * operation would be invisible, it does not happen.
+     */
+    private fun canBeSeen(): Boolean {
+        val manager = getSystemService(NotificationManager::class.java)
+        if (!manager.areNotificationsEnabled()) return false
+        val channel = manager.getNotificationChannel(CHANNEL_ID)
+        return channel == null || channel.importance != NotificationManager.IMPORTANCE_NONE
     }
 
     private fun stopTask() {

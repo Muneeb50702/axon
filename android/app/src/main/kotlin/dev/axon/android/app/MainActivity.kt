@@ -1,6 +1,9 @@
 package dev.axon.android.app
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
@@ -74,6 +77,18 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         controller = AgentController(this)
         agent = AxonAgent(this)
+
+        // Requested at launch, not at first use. Without it the gateway's
+        // notification is suppressed and the agent would operate invisibly —
+        // which the service now refuses to do (§16), so asking late would mean
+        // the first task silently declining to start.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+        }
+
         enableEdgeToEdge()
         setContent { AxonApp(controller, agent) }
     }

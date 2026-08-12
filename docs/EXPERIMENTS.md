@@ -497,6 +497,49 @@ costs a confused hour if you have not seen it before.
 
 ---
 
+## O2 — "Foreground service" does not imply "visible" on Android 13+
+
+*Operational finding, 2026-08-12. A §16 violation that shipped and was caught by
+the user noticing an absent notification.*
+
+```
+POST_NOTIFICATIONS: granted=false
+startForegroundCount: 0
+AxonLlama: loaded model …          ← the agent was running
+```
+
+The gateway ran a task with **no notification anywhere on the device**.
+
+**Cause.** Since Android 13, `POST_NOTIFICATIONS` is a *runtime* permission. AXON
+declared it in the manifest and never requested it. A foreground service whose
+notification is suppressed does not fail — it runs, silently. The service had
+`startForegroundCount: 0` and kept working regardless.
+
+**Why this is worth recording rather than quietly fixing.** The project's own
+documentation asserted that §16's visibility guarantee was *enforced by the
+platform*: "Android tears down a foreground service that fails to post its
+notification." That is no longer true, and building on it produced precisely the
+covert operation §16 forbids. The guardrail existed, was believed, was documented
+— and was not there.
+
+It is also the strongest available illustration of why the paper's guardrail
+claims must be phrased as *mechanisms*, not intentions. "We run as a foreground
+service" sounds like a visibility guarantee and is not one.
+
+**Fix, in the shape of every other guardrail here.** The service now checks
+`areNotificationsEnabled()` plus channel importance before starting any task, and
+**refuses to run** when operation would be invisible. Not a warning, not
+degraded mode — refusal. The app also requests the permission at launch rather
+than at first use, so the refusal is not the user's first experience of it.
+
+**For the thesis.** The claim to make is now: *AXON cannot operate the device
+while hidden from the user, because it checks and declines* — verifiable by
+revoking notification permission and observing that tasks refuse to start. That
+is a testable property. The previous claim was an assumption about platform
+behaviour that happened to be false.
+
+---
+
 ## Open measurements
 
 Required before publication. Listed here so gaps are visible rather than
