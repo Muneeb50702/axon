@@ -106,6 +106,34 @@ public object ScreenGrammar {
         return Gbnf(specialised)
     }
 
+    /**
+     * A grammar whose only legal action is launching [packageName] (E21).
+     *
+     * Used when the goal is recognised as an app-launch intent and the name
+     * resolves to an installed package. At that point the correct action is
+     * fully determined without consulting the screen, so the model is not asked
+     * to choose — the sampler has exactly one path.
+     *
+     * This is the strongest form the constraint takes anywhere in AXON: not
+     * "well-formed", not "refers to something present", but *this specific
+     * action*. It is only ever safe because the determination is made outside
+     * the model, by a package lookup that cannot be wrong about whether an app
+     * exists.
+     */
+    public fun forAppLaunch(packageName: String, expectValue: String = packageName): Gbnf = Gbnf(
+        buildString {
+            append("# AXON — single-action grammar (E21).\n")
+            append("# The goal is an app-launch intent and the package resolved, so the\n")
+            append("# correct action is determined without the model's judgement. The\n")
+            append("# sampler has exactly one legal path.\n\n")
+            append("root ::= \"{\\\"action\\\":\\\"launch_app\\\",\\\"app\\\":\\\"")
+            append(packageName)
+            append("\\\",\\\"expect\\\":{\\\"type\\\":\\\"app_foreground\\\",\\\"value\\\":\\\"")
+            append(expectValue)
+            append("\\\"}}\"\n")
+        },
+    )
+
     /** Did specialisation actually apply, or did it fall back to the base grammar? */
     public fun isSpecialised(grammar: Gbnf): Boolean =
         "screen-label ::=" in grammar.source

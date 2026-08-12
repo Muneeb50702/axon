@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import dev.axon.android.driver.AccessibilityDriver
 import dev.axon.android.driver.AxonAccessibilityService
+import dev.axon.android.driver.PackageAppResolver
 import dev.axon.android.inference.LlamaEngine
 import dev.axon.core.executor.ConfirmationGate
 import dev.axon.core.executor.ConfirmationReason
@@ -151,7 +152,13 @@ class AxonAgent(private val context: Context) {
 
             val runtime = AxonRuntime(
                 driver = driver,
-                planner = ConstrainedPlanner(eng),
+                planner = ConstrainedPlanner(
+                    engine = eng,
+                    // E21: "open X" resolves to a package, and the grammar then
+                    // collapses to that single action. E18b measured a 1B model
+                    // failing exactly this choice — it opened the dialer.
+                    appResolver = PackageAppResolver(context),
+                ),
                 executor = DefaultExecutor(
                     driver,
                     nowMs = System::currentTimeMillis,

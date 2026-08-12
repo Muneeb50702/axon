@@ -62,6 +62,16 @@ public class ConstrainedPlanner(
      * measure what it buys; on in the shipping configuration.
      */
     private val screenGrounded: Boolean = true,
+
+    /**
+     * Resolves "open X" goals to a package (E21).
+     *
+     * When it answers, the grammar collapses to the single correct action and
+     * the model's judgement is removed from a decision it was measurably bad at.
+     * Defaults to [AppResolver.NONE], so the narrowing is opt-in and the ablation
+     * can measure it.
+     */
+    private val appResolver: AppResolver = AppResolver.NONE,
 ) : Planner {
 
     override suspend fun nextAction(
@@ -76,6 +86,18 @@ public class ConstrainedPlanner(
 
         val prompt = PlannerPrompt.user(state, goal, menu, failure)
 
+        // E21: if this is purely an app-launch request and the name resolves,
+        // the correct action is determined without consulting the screen. Narrow
+        // the grammar to exactly that action rather than asking a 1B model to
+        // pick the right icon — which E18b measured it failing to do.
+        val launchGrammar = if (constrained && failure == null) {
+            AppIntent.appName(goal.utterance)
+                ?.let { appResolver.resolve(it) }
+                ?.let { ScreenGrammar.forAppLaunch(it) }
+        } else {
+            null
+        }
+
         // One retry, and only for truncation.
         //
         // Retrying a *parse* failure would be pointless under a grammar: the
@@ -88,6 +110,7 @@ public class ConstrainedPlanner(
             // ~40-element grammar costs microseconds against a ~50 s step.
             val grammar = when {
                 !constrained -> null
+                launchGrammar != null -> launchGrammar
                 screenGrounded -> ScreenGrammar.forScreen(state)
                 else -> ActionGrammar.GBNF
             }
