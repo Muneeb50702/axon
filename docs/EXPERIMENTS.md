@@ -184,7 +184,68 @@ and both arms get the same description, so the ablation stays clean. It does cos
 prompt tokens, and prefill is already 63% of a step (E2) — that trade-off is
 itself worth reporting.
 
-**Status: E4 is void. Supersede with E4b once the prompt is fixed.**
+**Status: E4 is void. Superseded by E4b below.** Raw data retained at
+`bench/results/E4-void-strawmanned.log` as evidence of the methodology fix.
+
+---
+
+## E4b — Grammar ablation, fair prompt (§14.3 rows A and B)
+
+*2026-08-11 · `94d1c75` · Gemma 3 1B Q4_K_M · `ScreenCorpus` · greedy ·
+`max_tokens` 192 · chunked 4/invocation (E6) · battery 94%→, thermal `NONE` ·
+artefact: `bench/results/acceptance-raw.log` / `.json`*
+
+Both arms receive **byte-identical prompts**, now including the output format
+with worked examples. The grammar is the only variable.
+
+| metric | A (naive) | B (+grammar) |
+|---|---|---|
+| cases | 13 | 13 |
+| valid actions | 6 | 13 |
+| **valid-action rate** | **46.2%** | **100.0%** |
+| median latency | 57.0 s | 67.7 s |
+| p90 latency | 73.2 s | 70.4 s |
+| median prefill | 46.9 s | 48.9 s |
+| median decode | 6.1 s | 16.9 s |
+| grammar sampling | — | 11.8 s |
+| mean prompt tokens | 788.5 | 788.5 |
+| mean output tokens | **51.6** | **31.7** |
+| truncated | 0 | 0 |
+
+**§13 acceptance: PASS** — 13/13 schema-valid under grammar.
+**§14.3 A-vs-B expectation: PASS.**
+
+### Reading it honestly
+
+**46.2% is the credible number.** It sits squarely in the 40–80% band the
+literature reports for unconstrained small models, which is the main reason to
+believe this run and disbelieve E4's 0%. A well-prompted 1B model gets the format
+right about half the time; the grammar takes that to certainty.
+
+**The grammar makes output *shorter*, not longer** — 31.7 tokens against 51.6.
+Unconstrained, the model spends tokens on prose, restatement and occasional code
+fences; constrained, it cannot. Worth reporting because the intuition runs the
+other way: constraint is usually assumed to cost tokens.
+
+**Constrained decoding costs ~11.8 s of the 16.9 s decode**, ~70%, from grammar
+evaluation over Gemma's ~262k vocabulary at sampler-chain head. That is the price
+of the correctness-first placement, and it is what the optimistic scheme (E13,
+Phase 3) is expected to recover.
+
+**Latency is dominated by prefill in both arms** (~47 s of ~57–68 s), and the
+prompt grew from 547 to 788 tokens when the format description was added. That
+is the cost of a fair ablation, and it makes KV prefix reuse more valuable rather
+than less.
+
+### What it does not show
+
+Structural validity, not task success. A valid action can still name the wrong
+element — the precondition gate's job (§7.5), measured separately. **The paper
+must not permit 100% to be read as a success rate.**
+
+n = 13 of 24 planned; the remainder were lost to E6 process kills. Adequate to
+separate 46% from 100%; **not** adequate for a published confidence interval.
+Rerun with the full corpus and repetitions (E14).
 
 **Validity is judged by `AxonJson.strict`** — the same parser the planner uses,
 with `ignoreUnknownKeys = false`. A laxer parser here would flatter arm A by
