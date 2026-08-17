@@ -59,9 +59,15 @@ asked it replays with **zero model calls** — across restarts, and reachable
 through any of nine phrasings in two languages.
 
 Measured on that device: `open whatsapp` costs 66 s cold and **2.3 s replayed**
-end to end (E22d); a compound goal naming two learned skills runs with **0 model
-calls** (E24b); a learned skill survives `force-stop` and rehydrates in 39 ms
-(E22b).
+end to end (E22d); a compound goal naming two learned skills runs in **2.3 s with
+0 model calls** (E24b, E24d); a learned skill survives `force-stop` and rehydrates
+in 39 ms (E22b).
+
+The sharpest number is the comparison, because it is not a speedup. Asked the
+same compound goal with nothing learned, the planner was given 277 s and three
+model calls and **never attempted the task** — it tapped an unrelated element,
+tapped Back, and escalated (E24c). Composition here is not making a slow task
+faster; it is the difference between a task that completes and one that does not.
 
 | phase | scope | state |
 |---|---|---|

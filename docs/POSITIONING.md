@@ -170,6 +170,47 @@ class remains open and why matching genuine paraphrase still needs an embedding
 model (E23). **A method that says where it does not apply is worth more than one
 that claims to apply everywhere.**
 
+#### The contrapositive, measured
+
+A method that only ever helps when applied is weakly evidenced: the improvement
+could come from anywhere. The stronger test is to find a case where the
+determinism is **unavailable** and check whether the specific predicted failure
+appears. E24c is that case, and it was not constructed for the purpose — it fell
+out of running the cold arm of an unrelated comparison.
+
+A *compound* goal loses two rows of the table at once, because `AppIntent`
+refuses to fire on a continuation word ("then", "and", "phir", "aur") — correctly,
+since otherwise "open whatsapp and message ammi" would be narrowed to a launch
+and declared complete at step one.
+
+| | simple goal | compound goal |
+|---|---|---|
+| which app "open X" means | ✔ package lookup | ✘ full grammar |
+| when the goal is finished | ✔ foreground package | ✘ no oracle |
+
+Asked *"open whatsapp then go to linkedin"* with both rows removed, the 1B model
+was given 277 seconds and three planning calls and **never issued a launch for
+WhatsApp at all.** It tapped a company link on the screen in front of it, tapped
+Back, and escalated. The same goal, with two learned skills to compose from,
+takes 2.3 seconds and zero model calls.
+
+Two things make this worth reporting rather than merely embarrassing:
+
+1. **The failure was the predicted one.** Not a crash, not a timeout — a
+   structurally valid action naming a real on-screen element with nothing to do
+   with the goal, which is exactly E18b's open failure class and exactly what the
+   table's third row exists to remove.
+2. **Two of the three defences had nothing to object to.** The grammar passed
+   (well-formed) and the precondition gate passed (the target really was on
+   screen). Only the verifier, which checks *outcomes*, could tell the agent was
+   doing the wrong thing competently. That is the clearest available argument for
+   why the reliability case has to be architectural rather than a single filter.
+
+The honest caveat, recorded in E24c and worth repeating here: n = 2, at 15–16%
+battery, from an app screen rather than the launcher. The mechanism claim —
+compound goals lose both determinism rows — is a fact about the code and holds
+regardless. What the model does *instead* is measured thinly.
+
 ### 3.6 The deployment substrate is systematically more forgiving in development
 
 Three findings, arrived at independently, that are the same finding:
