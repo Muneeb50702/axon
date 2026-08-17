@@ -33,6 +33,8 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 
     testImplementation(kotlin("test"))
+    // The harness is suspend-based end to end, because the runtime it drives is.
+    testImplementation(libs.kotlinx.coroutines.test)
 }
 
 tasks.test {
