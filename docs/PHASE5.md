@@ -159,6 +159,20 @@ paraphrase-free repetition, which is the case C1′ needs since the claim is abo
 *repeated* tasks, and it fails cleanly on paraphrase instead of guessing. A false
 match replays the wrong skill against a live device, so failing closed is right.
 
+One class of paraphrase **is** handled, and the distinction is worth drawing
+because it shows what the limitation actually costs. Verb paraphrase for
+app-launch goals — "launch whatsapp", "kholo whatsapp", "open whatsapp" — is
+collapsed exactly, by canonicalising both sides against `AppIntent`'s verb list
+(E23). Measured on device: three different verbs all replayed a skill compiled
+from a fourth, with zero model calls.
+
+That is a *lookup*, not a similarity score, which is why it is safe here. There
+is no threshold at which "open camera" begins matching a WhatsApp skill. The
+general case has no such exact structure to exploit, which is precisely why it
+needs an embedding model — the honest framing is not "we solved paraphrase" but
+"where an exact normalisation exists we use it, and where it does not we decline
+to guess".
+
 ---
 
 ## 5. Honest weaknesses
