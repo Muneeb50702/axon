@@ -181,7 +181,7 @@ fill_body(body_of(s2), [
     (0, "It operates the phone the way a person does — reads the screen, then taps.", True),
     (1, "Send a message, set an alarm, change a setting, navigate — by natural-language request.", False),
     (0, "And it gets faster the more it is used.", True),
-    (1, "Once AXON has learned a task, it repeats it with ZERO AI calls — measured at 8,407× faster.", False),
+    (1, "Once AXON has learned a task, it repeats it with ZERO AI calls — and remembers it after a restart.", False),
 ], base=19)
 
 # ==========================================================================
@@ -419,15 +419,21 @@ for sh in list(sr.shapes):
 set_title(sr, "Progress & Early Results")
 
 label(sr, 0.92, 1.90, 11.5, 0.32,
-      "Already implemented and measured on the target device — not a plan, a result.",
+      "Running on a ₨40,000 phone, driving a real app. Every number below was measured, not estimated.",
       15, True, BLUE)
 
 # --- headline metric band -------------------------------------------------
+#
+# The live end-to-end figure leads, not the 8,407x from E17. E17 isolates the
+# cost of *deciding* against a synthetic driver and is the larger number; the
+# 29x below is the whole task on real WhatsApp, including WhatsApp's own cold
+# start. On a slide the smaller, unimpeachable number is the stronger one — it
+# survives "is that simulated?", which the bigger one does not.
 cards = [
-    ("8,407×", "faster on replay", "142,917 ms cold  ➜  17 ms replayed", PURPLE),
-    ("0", "AI calls on replay", "target was \"fewer\"; achieved exactly zero", GREEN),
+    ("0", "AI calls on replay", "confirmed on a live app — not simulated", GREEN),
+    ("29×", "faster, end to end", "66 s planned  ➜  2.3 s replayed", PURPLE),
     ("100%", "valid actions", "vs 46.2% without our grammar", BLUE),
-    ("83 J", "per planning step", "≈ 831 steps per full battery charge", AMBER),
+    ("39 ms", "to remember", "learning survives the app being killed", AMBER),
 ]
 x = 0.92
 for big, mid, sub, col in cards:
@@ -455,10 +461,13 @@ built = [
     "Grammar-constrained action generation (GBNF) — 100% valid",
     "Screen perception via AccessibilityService, with credential fields refused",
     "Precondition gate, deterministic verifier, self-healing loop",
-    "Skill compiler + replay — the learning loop closes end to end",
-    "Foreground-service gateway — operates other apps, stoppable by the user",
+    "Learns a task, then repeats it with no AI — verified on WhatsApp",
+    "Remembers what it learned in SQLite — survives reboot and force-stop",
 ]
-tb = sr.shapes.add_textbox(Inches(0.92), Inches(4.22), Inches(5.7), Inches(2.4))
+# Height matches the right-hand column (bottom 6.17), leaving the honesty line
+# at 6.30 clear. The box was 2.4 in tall for ~1.5 in of text, which collided
+# with the line below it even though the rendered text did not.
+tb = sr.shapes.add_textbox(Inches(0.92), Inches(4.22), Inches(5.7), Inches(1.95))
 tf = tb.text_frame; tf.word_wrap = True
 for i, t in enumerate(built):
     p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
@@ -467,10 +476,14 @@ for i, t in enumerate(built):
     p.space_after = Pt(3)
 
 label(sr, 6.85, 3.90, 5.5, 0.3, "Engineering evidence", 14, True, BLUE)
+# Every figure here is countable from the repository, because a number a
+# panellist can ask to see is worth more than a bigger one they cannot. An
+# earlier draft of this slide claimed "28 design decisions" when the log holds
+# 12 — the kind of unsourced number this project's own rules forbid.
 ev = [
-    ("129", "automated tests passing — 0 failures"),
-    ("28", "documented design decisions, each with evidence"),
-    ("18", "logged experiments with full provenance"),
+    ("158", "automated tests passing — 0 failures, none needing a phone"),
+    ("12", "documented design decisions, each with evidence and how to reverse it"),
+    ("20", "logged experiments with full provenance"),
     ("1", "experiment we VOIDED ourselves after finding our own baseline was unfair"),
 ]
 tb2 = sr.shapes.add_textbox(Inches(6.85), Inches(4.22), Inches(5.6), Inches(1.95))
@@ -483,8 +496,12 @@ for i, (n, t) in enumerate(ev):
     r2.font.size = Pt(11.5)
     p.space_after = Pt(6)
 
-label(sr, 6.85, 6.32, 5.6, 0.38,
-      "Half our evaluation runs with no phone attached — so results are reproducible by anyone.",
+# The honesty line. Deliberately the last thing on the slide, and deliberately
+# a failure: a panel that hears a team report its own negative result stops
+# auditing the positive ones.
+label(sr, 0.92, 6.30, 11.5, 0.40,
+      "Measured on the device, we found our strongest safeguard had never actually run — Android was "
+      "silently hiding the data it needed. It passed every unit test. Tests prove code is correct, not that it is reachable.",
       10.5, True, GREEN)
 
 
@@ -499,8 +516,9 @@ for sh in st.shapes:
         tf = sh.text_frame; tf.clear()
         p = tf.paragraphs[0]
         r = p.add_run()
-        r.text = ("Two-semester plan. Phases 0–5 are already complete (shaded darker) — the core "
-                  "contributions are locked; the remaining work is evaluation and write-up.")
+        r.text = ("Two-semester plan. Tasks 1–7 are already complete (shaded darker) — the core "
+                  "contributions are built and measured on hardware; what remains is evaluation "
+                  "at scale, user testing and the thesis.")
         r.font.size = Pt(12); r.font.bold = True; r.font.color.rgb = BLUE
 
 # Eight tasks, matching the row count the template's table is sized for.
@@ -512,8 +530,8 @@ TASKS = [
     ("Perception, executor & precondition gate", 3, 4, True),
     ("Planner in the loop + deterministic verifier / self-healing", 4, 5, True),
     ("Skill compiler & replay — the learning loop", 5, 6, True),
-    ("AXON-Bench: benchmark, ablation matrix, results", 7, 9, False),
-    ("Optimisation, user testing, thesis & defence", 9, 12, False),
+    ("Persistent memory + on-device validation of the full loop", 6, 7, True),
+    ("AXON-Bench, ablation matrix, user testing, thesis & defence", 7, 12, False),
 ]
 
 for sh in st.shapes:

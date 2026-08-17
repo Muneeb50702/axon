@@ -33,6 +33,7 @@ must speak or the group is not enrolled.
 | 1–4 · Title, Introduction, Background, Problem | **Muneeb** (leader) | 3.0 |
 | 5–7 · Objectives, Literature, Methodology | **Nasar** | 3.0 |
 | 8–10 · Block Diagram, Results, Timeline | **Danish** | 3.0 |
+
 | 11 · References + close | **Muneeb** | 0.5 |
 
 Practise once with a timer. Going over time is the most common way to lose marks.
@@ -42,13 +43,15 @@ Practise once with a timer. Going over time is the most common way to lose marks
 ## What makes this deck strong — lean on it
 
 Most proposal defences present a *plan*. **You have a working system with
-measured results.** That is slide 9, and it is your strongest 45 seconds.
+measured results, taken on a real phone driving a real app.** That is slide 9,
+and it is your strongest 45 seconds.
 
 Say this out loud, once, clearly:
 
 > "This is a proposal defence, but we have already built and measured the core
-> system. It runs on a forty-thousand-rupee phone, completely offline, and the
-> numbers on this slide were measured on that device — not estimated."
+> system. It runs on a forty-thousand-rupee phone, completely offline, it learns
+> a task and then repeats it with no AI at all — and the numbers on this slide
+> were measured on that device last week, not estimated."
 
 ---
 
@@ -126,17 +129,39 @@ Then point at the safety bar along the bottom and say one sentence about it.
 ### 9 · Progress & Early Results — 75 s ⭐
 **Your best slide. Slow down.**
 
-> "8,407 times faster on replay. The cold run takes 143 seconds. The replay takes
-> 17 milliseconds, with zero AI calls."
+Lead with the live demo number, not the biggest one:
 
-Then the honesty move, which is worth more than the number:
+> "We asked it to open WhatsApp. The first time, it plans: 66 seconds, one AI
+> call. The second time it replays what it learned: 2.3 seconds, and **zero AI
+> calls**. That is on a real phone driving the real WhatsApp app — the 2.3
+> seconds includes WhatsApp's own start-up time."
 
-> "One of our experiments we voided ourselves. We got a 100%-versus-0% result
-> that looked excellent, then found our own baseline was unfair — the comparison
-> prompt never asked for the right output format. We fixed it and the honest
-> number is 46.2%. It is in our experiment log."
+Then persistence, because it is the part a person can see:
 
-Panels remember students who catch their own mistakes.
+> "And it remembers. We killed the app the way Android kills it, reopened it, and
+> it still knew the task — in 39 milliseconds."
+
+Then **two** honesty moves. These are worth more than any number.
+
+> "One experiment we voided ourselves. We got a 100%-versus-0% result that looked
+> excellent, then found our own baseline was unfair — the comparison prompt never
+> asked for the right output format. The honest number is 46.2%."
+
+> "And when we finally measured on the device, we found our strongest safeguard
+> had never actually run. Android hides the list of installed apps from an app
+> that does not request it, and we had deliberately not requested it, for privacy
+> reasons. So the safeguard was switched off — silently — while passing every
+> single unit test. Tests prove your code is correct. They do not prove it is
+> reachable."
+
+If you deliver only one sentence well in the whole presentation, make it that
+last one. It is the difference between a student who built something and a
+researcher who knows what their evidence does and does not support.
+
+**If asked where 8,407× comes from** (it is in the report, not on the slide):
+that is a separate experiment isolating the cost of *deciding*, against a
+simulated screen. The 29× on the slide is the whole task on a real app. We lead
+with the smaller number because it is the one that cannot be argued with.
 
 ### 10 · Timeline — 45 s
 Point out that phases 0–5 are already shaded as complete.
@@ -186,6 +211,30 @@ Point out that phases 0–5 are already shaded as complete.
 > Making a sub-2-billion-parameter, fully offline model reliable enough to drive
 > a phone, and measuring where architecture can substitute for model size. Nobody
 > has that number.
+
+**"If I say 'launch WhatsApp' instead of 'open WhatsApp', does the learned skill still work?"**
+> Not yet — and it fails safely. Matching is literal right now, so a different
+> phrasing misses and falls back to the slow path: correct answer, wrong speed.
+> We built it that way on purpose, because a *wrong* match would replay the wrong
+> skill on a live phone — messaging the wrong person. We would rather be slow
+> than wrong. The fix for phrasing is already half-built: our app-name resolver
+> already treats "open", "launch", "start" and the Urdu "kholo" as the same
+> intent, so we store the meaning rather than the words. Full paraphrase matching
+> needs a second AI model for sentence similarity, which is a real memory cost on
+> this hardware — that is in our limitations, not hidden.
+
+**"How do you know it really replays without the AI?"**
+> Three ways. The skill store counts every replay and every repair. The trace log
+> records model calls per task and shows zero. And in our tests the replayer is
+> handed a planner that fails the test loudly if it is ever called.
+
+**"What is the weakest part of your system?"**
+> The replay path. Our three safeguards — the grammar, the gate, the verifier —
+> all protect the planning path. A compiled skill answers to none of them. We
+> found that on the device: our compiler was dropping part of the recorded action,
+> and a skill that recorded "press Home" would have replayed "press Back". It now
+> refuses to act rather than guess, and every action type is tested end to end.
+> We would not have found that without running on real hardware.
 
 **"Have you tested with real users?"**
 > Not yet — it is in the timeline. We will complete the ethics process before
