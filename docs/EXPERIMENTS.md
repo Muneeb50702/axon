@@ -1106,11 +1106,39 @@ it cannot rot, cannot be replayed wrongly later, and needs no compilation gate.
 A compound goal asked often enough gets compiled from its own traces by the
 ordinary two-clean-runs path.
 
-### To measure (E24b)
+### E24b - measured on device
 
-- Two compiled skills on device, then a compound goal naming both. Expect **0
-  model calls** and a trace count that does not increase.
-- The long-horizon tier with and without composition — the number that turns this
+*2026-08-17 - TECNO Camon 20 - two compiled skills - battery 24%*
+
+The store held `open_whatsapp` and `go_to_linkedin`, each compiled from its own
+two clean runs. One compound request naming both:
+
+> **"open whatsapp then go to linkedin"**
+
+| | |
+|---|---|
+| `open_whatsapp` replay_count | 8 → **9** |
+| `go_to_linkedin` replay_count | 1 → **2** |
+| second app in foreground | **4,417 ms** |
+| traces recorded | 9 → **9 (unchanged)** |
+| **model calls** | **0** |
+
+Both counters advancing is the evidence that both skills ran; the unchanged trace
+count is the evidence that nothing was planned, because a clean replay returns
+early and records no trace. 4.4 s is end-to-end and includes two app launches.
+
+**What this is not a measurement of.** The same goal's *cold* cost was not run,
+so no speedup ratio is claimed here. For scale: each half measured 66 s and 69 s
+cold on its own (E23, E25b), and a compound goal has no success oracle - E21b's
+finding - so the PLAN path would more likely exhaust its step budget than
+complete. That is the E24 claim, and confirming it needs the cold arm actually
+run (E24c).
+
+### Still to measure
+
+- **E24c** - the compound goal on the PLAN path, to establish whether it
+  completes at all on this hardware. The interesting outcome is a failure.
+- The long-horizon tier with and without composition - the number that turns this
   from a feature into evidence for C1′.
 - Whether the decomposer's over-splitting produces false composition in a store
   with many skills. The unit tests cover the obvious cases, not a population.
@@ -1190,13 +1218,26 @@ correctness property the three structural defences depend on: a gate that cannot
 tell an unloaded screen from an absent element will refuse correct actions on
 slow hardware, which is precisely the hardware this project targets.
 
+### E25b - confirmed on the device that found it
+
+Same task, same phone, after the fix:
+
+| | before | after |
+|---|---|---|
+| outcome | ESCALATED | **SUCCESS** |
+| steps | 3 | **1** |
+| model calls | 3 | **1** |
+| wall clock | 203 s | **69 s** |
+
+`launch_app` with `pre_ok=1, post_ok=1`. The task that could not complete now
+completes in one step, and the two wasted steps are gone with it.
+
 ### Threats to validity
 
-- **Found, not designed.** n = 1, from ordinary use. LinkedIn's 500 ms-plus cold
-  start is not characterised; 8 s is chosen with margin, not measured.
-- **Not yet re-run on device.** The regression is covered by two JVM tests - a
-  slow launch that arrives, and a genuine mismatch that must fail promptly - but
-  per E21c's rule, the on-device confirmation (E25b) is still owed.
+- **Found, not designed.** n = 1, from ordinary use. LinkedIn's cold start is not
+  characterised; the 8 s deadline is chosen with margin, not measured.
+- **One slow app.** Whether 8 s covers the slowest app on this device is unknown,
+  and the honest statement is that it covered the one that exposed the bug.
 
 ## Open measurements
 
@@ -1224,5 +1265,4 @@ discovered late.
 | E22e | Hydrate cost with a realistic skill count (hundreds, not one) | needs a populated store |
 | E21d | Does the launch oracle generalise past app-launch goals? | Phase 7 |
 | E23b | False-match rate for canonicalisation across many launch skills | needs a populated store |
-| E24b | Composition on device: compound goal, two skills, 0 model calls | needs device |
-| E25b | Re-run 'go to LinkedIn' and other slow-starting apps on device | needs device |
+| E24c | Compound goal on the PLAN path: does it complete at all? | needs device |
