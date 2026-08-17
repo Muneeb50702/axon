@@ -157,11 +157,29 @@ nothing a user sees. E26's own comments called its ordering "the most
 drift-resistant form available", which was a robustness claim the code had not
 earned.
 
-This is the shape the §3.4 study should take, and it also shows why the study
-matters: **the missing number is the frequency of each drift class in real app
-updates** (E26c). Without it, the two policies cannot be ranked — which is
-precisely the kind of gap a paper should name rather than paper over. E27
-remains unclaimed.
+**E27b has now run too**, and reaches the same wall from the other side. Skill
+retirement catches a genuinely rotten skill 99.9% of the time — but the rule is
+absorbing, so a false retirement is permanent and costs a full cold re-learn, and
+a skill that replays cleanly **80% of the time is permanently retired 12.9%** of
+the time. Its comment calls the threshold "deliberately lenient"; for mid-range
+skills it is not.
+
+The risk is front-loaded — nearly all of it lands at the first judgement — which
+identifies the minimum-sample constant as the lever. Raising it 3 → 6 cuts false
+retirement tenfold with no loss of detection, and is still **not** obviously
+right: a rotten skill then survives more replays, most of which need repair, and
+a repaired replay costs a ~60 s planner call.
+
+So both studies converge on the same missing number: **the frequency of each
+drift class, and the ratio of healthy to rotten skills, in real app updates**
+(E26c). Without it, neither selector policy can be ranked and neither retirement
+constant can be chosen.
+
+That convergence is itself the §3.4 result worth reporting. The mechanisms are
+now characterised rather than merely asserted, and what remains is not
+engineering but a **measurement of the world** — which is a far more defensible
+position than the one this section described this morning, and names precisely
+what a follow-up study would have to collect.
 
 ### 3.5 Determinism as a design method, applied repeatedly
 

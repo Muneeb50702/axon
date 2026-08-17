@@ -81,3 +81,11 @@ val recoveryStudy by tasks.registering(JavaExec::class) {
     mainClass.set("dev.axon.bench.RunRecoveryStudy")
     classpath = sourceSets["main"].runtimeClasspath
 }
+
+/** E27b — is the skill-retirement threshold calibrated? Exact, not simulated. */
+val retirementStudy by tasks.registering(JavaExec::class) {
+    group = "verification"
+    description = "Print E27b: what does the retirement rule cost a healthy skill?"
+    mainClass.set("dev.axon.bench.RunRetirementStudy")
+    classpath = sourceSets["main"].runtimeClasspath
+}

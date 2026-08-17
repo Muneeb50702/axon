@@ -2302,6 +2302,97 @@ of the control loop.
 
 ---
 
+## E27b — What the retirement threshold costs a working skill
+
+*2026-08-17 · exact calculation, no device, no simulation · 9 tests · artefact:
+`bench/results/E27b-retirement-study.txt` · `./gradlew :bench:retirementStudy`*
+
+E27 retires a skill repaired more often than not:
+
+```kotlin
+isHealthy = replayCount < MIN_REPLAYS_TO_JUDGE || cleanReplayRate >= MIN_CLEAN_REPLAY_RATE
+//                        3                                          0.5
+```
+
+Both constants are reasoned in their own comments; neither was calibrated. The
+shallow reading of "do the thresholds fire correctly" — *does the boolean
+evaluate as written* — was already covered by unit tests. The question worth
+answering is what the rule **costs**, and because it is a threshold on a binomial
+process that is computable exactly rather than simulated.
+
+### The property that makes it matter
+
+`GoalMatcher` skips an unhealthy skill, so a retired skill is **never replayed
+again** — its counters freeze and it cannot recover. `resetHealth` fires only
+when the skill body changes, i.e. after the goal has been cold-planned twice and
+recompiled. **Retirement is absorbing, and a false retirement costs a full
+re-learn** — two planning runs, ~2 minutes on this hardware.
+
+### Result
+
+| true clean rate | P(retired ≤10) | P(retired ≤50) | median replays to retire |
+|---|---|---|---|
+| 95% | 0.7% | 0.7% | — |
+| **90%** | 3.1% | **3.1%** | — |
+| **80%** | 12.7% | **12.9%** | — |
+| 70% | 28.6% | 30.8% | — |
+| 60% | 48.5% | 57.6% | 11 |
+| 50% | 68.5% | 85.9% | 3 |
+| 30% | 94.7% | **99.9%** | 3 |
+| 10% | 99.9% | 99.9% | 3 |
+
+The rule does the job it was written for: a genuinely rotten skill is caught
+**99.9%** of the time, at the earliest legal moment.
+
+But the comment calls the threshold *"deliberately lenient"*, and for mid-range
+skills it is not. A skill that replays cleanly **80% of the time — still saving
+most of its steps — is permanently retired 12.9% of the time.** A 60% skill is
+retired more often than not.
+
+### The risk is front-loaded, and that identifies the lever
+
+Nearly all the lifetime risk is incurred at the **first** judgement. At 90%
+clean, 2.7 of the 3.1 percentage points arrive at replay 3. So the
+minimum-sample constant governs it, and the rate threshold barely does:
+
+| min replays | 95% clean | 90% | 80% | 30% (rotten) |
+|---|---|---|---|---|
+| **3** (shipping) | 0.7% | 3.1% | 12.9% | 99.9% |
+| 4 | 0.1% | 0.9% | 7.2% | 99.9% |
+| 6 | 0.0% | 0.3% | 4.1% | 99.9% |
+
+### Why the constant is *not* changed
+
+That table looks like a free win — false retirement falls 10× and rotten-skill
+detection is untouched at 99.9%. It is not free, and the column that would show
+the cost is missing from it.
+
+A higher minimum means a rotten skill is **replayed more times before
+retirement**, most of those replays need repair, and **a repaired replay costs a
+planner call** — ~60 s (E2), not the ~2.3 s a clean replay costs (E22d):
+
+```
+going 3 → 6 saves   (3.1% − 0.3%) × ~120 s re-learn        ≈    3 s per healthy skill
+        and costs   ~3 extra replays × ~0.7 repair × ~60 s ≈  126 s per rotten one
+```
+
+So the optimum turns on the ratio of healthy to rotten skills in a real store —
+**the same missing number E26c needs.** The lever is identified and priced;
+choosing its value is not possible from this study, and picking one anyway would
+be exactly the unearned calibration E27 shipped with.
+
+### Threats to validity
+
+The model assumes each replay is independent with a fixed clean probability.
+Real drift is not like that: an app update flips a skill from mostly-clean to
+mostly-broken at a *point in time*, rather than sampling from a stationary rate.
+That makes these figures the right answer to "what does this rule do to a skill
+with a steady failure rate" and only an approximation of "what does it do after
+an app update" — where retirement is *supposed* to fire and probably fires
+faster than this table suggests.
+
+---
+
 ## Open measurements
 
 Required before publication. Listed here so gaps are visible rather than
@@ -2331,6 +2422,5 @@ discovered late.
 | E24e | Repeat E24c from the launcher, not a dense app screen, to separate "compound goals lose the oracle" from "that screen was distracting" | needs device |
 | E24f | The cold arm at a healthy state of charge — E24c ran at 15–16% and battery *fell* while plugged in | needs device, charged |
 | E26c | How often does each `DriftClass` actually occur? Mine real Android release diffs — the missing weights that would rank the selector policies | a corpus of app updates |
-| E27b | Skill-drift rate, and whether retirement thresholds fire correctly | Phase 7 |
 | E30 | The §14.3 **verifier** arm has no device path; grammar and skill-replay now do | needs an executor switch |
 | E32b | Confirm on device that the re-keyed repetition guard actually fires | needs a charged phone |
