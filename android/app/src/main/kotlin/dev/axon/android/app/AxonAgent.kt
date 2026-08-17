@@ -73,6 +73,32 @@ class AxonAgent(private val context: Context) {
     private val traces = SqlTraceStore(db)
 
     /**
+     * The trace store, timed (E22b).
+     *
+     * Wrapped here rather than instrumented inside `:core`, which has no
+     * logger and should not acquire one. The cost being measured is the write
+     * at the end of every task — one transaction, one row per action — and the
+     * question is whether it is perceptible on a Helio G85 after the ~60 s the
+     * user just waited for planning. It should be lost in the noise; that is a
+     * prediction, and E22b is where it gets checked rather than assumed.
+     */
+    private val timedTraces = object : dev.axon.core.memory.TraceStore {
+        override suspend fun append(trace: dev.axon.core.model.VerifiedTrace) {
+            val startedAt = System.currentTimeMillis()
+            traces.append(trace)
+            Log.i(
+                TAG,
+                "E22b trace write: ${trace.steps.size} step(s) in " +
+                    "${System.currentTimeMillis() - startedAt} ms",
+            )
+        }
+
+        override suspend fun forGoal(goal: String) = traces.forGoal(goal)
+        override suspend fun all() = traces.all()
+        override suspend fun compilable() = traces.compilable()
+    }
+
+    /**
      * Trace ids, unique across processes.
      *
      * Was a bare counter — `trace-0`, `trace-1` — which was harmless while the
@@ -186,7 +212,7 @@ class AxonAgent(private val context: Context) {
                     confirmation = confirmationGate,
                 ),
                 skills = skills,
-                traces = traces,
+                traces = timedTraces,
                 compiler = DefaultSkillCompiler(),
                 recorder = TraceRecorder(
                     device = driver.deviceFamily,
@@ -238,8 +264,23 @@ class AxonAgent(private val context: Context) {
      * would have paid for anyway.
      */
     suspend fun refreshLearned() = withContext(Dispatchers.IO) {
+        val startedAt = System.currentTimeMillis()
         runCatching { skills.all().size }
-            .onSuccess { _state.value = _state.value.copy(skillCount = it) }
+            .onSuccess { count ->
+                // E22b: the one persistence cost a user could actually feel.
+                // Hydrating deserialises every stored skill, so this grows with
+                // how much AXON has been taught — logged rather than assumed,
+                // because "it is only a count(*)" is the kind of claim that
+                // stops being true at a scale nobody tested.
+                Log.i(
+                    TAG,
+                    "E22b hydrate: $count skill(s) in " +
+                        "${System.currentTimeMillis() - startedAt} ms" +
+                        (skills.unreadableOnLoad.takeIf { it > 0 }
+                            ?.let { ", $it UNREADABLE" } ?: ""),
+                )
+                _state.value = _state.value.copy(skillCount = count)
+            }
             .onFailure { Log.e(TAG, "could not read learned skills", it) }
         Unit
     }
