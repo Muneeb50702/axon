@@ -14,6 +14,7 @@ import dev.axon.core.model.Goal
 import dev.axon.core.model.TaskResult
 import dev.axon.core.memory.CompilationPolicy
 import dev.axon.core.memory.TraceRecorder
+import dev.axon.core.planner.AppIntent
 import dev.axon.core.planner.ConstrainedPlanner
 import dev.axon.core.runtime.AxonRuntime
 import dev.axon.core.runtime.RunOutcome
@@ -56,6 +57,17 @@ class AxonAgent(private val context: Context) {
 
     private var engine: LlamaEngine? = null
     private val driver = AccessibilityDriver(context.applicationContext)
+
+    /**
+     * App-name → package lookup (E21), hoisted to a field.
+     *
+     * Used twice now, and both uses must agree. It decides whether the grammar
+     * collapses to a single `launch_app`, and it decides what "finished" means
+     * for that goal (E21b). Two instances would be two answers, and the failure
+     * would be a task that narrows to launching one app while waiting for a
+     * different one to appear.
+     */
+    private val appResolver = PackageAppResolver(context.applicationContext)
 
     /**
      * Skills and traces, shared across every task — and now across every launch.
@@ -185,17 +197,28 @@ class AxonAgent(private val context: Context) {
      * @param goalReached the success oracle. Supplied by the caller because AXON
      *   has no way to know when an open-ended request is finished, and inventing
      *   one would mean asking the model whether it had succeeded — exactly the
-     *   self-assessment C2 exists to replace. A caller with no oracle passes one
-     *   that never fires and relies on the budgets, which is honest about the
-     *   fact that the agent does not know.
+     *   self-assessment C2 exists to replace. `null` means the caller has no
+     *   oracle; AXON then derives one **only** where it can do so without the
+     *   model's judgement (see below), and otherwise relies on the budgets,
+     *   which is honest about the fact that the agent does not know.
      */
     suspend fun run(
         goal: Goal,
-        goalReached: suspend (CompactState) -> Boolean = { false },
+        goalReached: (suspend (CompactState) -> Boolean)? = null,
     ): Result<TaskResult> = withContext(Dispatchers.Default) {
         runCatching {
             val eng = engine ?: error("model not loaded")
             check(isServiceEnabled) { "accessibility service is not enabled" }
+
+            // E21b. A pure "open X" goal is one of the few whose completion test
+            // is determinable without asking anything: X is in the foreground.
+            // Measured before this existed, "open whatsapp" launched WhatsApp
+            // six times and ended in BUDGET_EXHAUSTED at 426 s — every step
+            // correct, every assertion satisfied, and no way to notice it had
+            // finished at step one.
+            val oracle = goalReached
+                ?: AppIntent.launchOracle(goal.utterance, appResolver)
+                ?: { false }
 
             val runtime = AxonRuntime(
                 driver = driver,
@@ -204,7 +227,7 @@ class AxonAgent(private val context: Context) {
                     // E21: "open X" resolves to a package, and the grammar then
                     // collapses to that single action. E18b measured a 1B model
                     // failing exactly this choice — it opened the dialer.
-                    appResolver = PackageAppResolver(context),
+                    appResolver = appResolver,
                 ),
                 executor = DefaultExecutor(
                     driver,
@@ -222,7 +245,7 @@ class AxonAgent(private val context: Context) {
                 ),
                 nowMs = System::currentTimeMillis,
                 compilationPolicy = CompilationPolicy(minCleanRuns = 2),
-                goalReached = goalReached,
+                goalReached = oracle,
             )
 
             _state.value = _state.value.copy(running = true, status = "running: ${goal.utterance}")

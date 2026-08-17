@@ -213,10 +213,15 @@ class SkillCompilerTest {
 
     private class ScriptedDriver(private val screens: MutableList<UiTree>) : DeviceDriver {
         var acted = 0
+
+        /** What was dispatched, so a test can assert on *which* action ran. */
+        val dispatched = mutableListOf<DeviceAction>()
+
         override suspend fun observe(): UiTree =
             if (screens.size > 1) screens.removeAt(0) else screens.first()
         override suspend fun act(action: DeviceAction): ActResult {
             acted++
+            dispatched += action
             return ActResult.Dispatched()
         }
         override suspend fun assert(condition: PostCondition) =
@@ -322,7 +327,22 @@ class SkillCompilerTest {
         ).replay(skill, Goal("send"), params = emptyMap())
 
         assertEquals(TaskOutcome.ERROR, result.result.outcome)
-        assertEquals(0, driver.acted, "nothing should have been tapped")
+
+        // Asserts on *taps*, not on total dispatches, and the distinction is
+        // the point.
+        //
+        // This test used to read `assertEquals(0, driver.acted)` and passed —
+        // for the wrong reason. The trace's first step is `launch_app`, and the
+        // compiler was silently dropping its package (E22c), so the replay died
+        // at step one and never reached the tap this test is actually about. The
+        // assertion was measuring a bug rather than the behaviour it named.
+        //
+        // With launch_app compiling correctly, step one legitimately runs. What
+        // must still never happen is a tap on the literal string "{contact}".
+        assertTrue(
+            driver.dispatched.none { it is DeviceAction.Tap },
+            "no tap may be dispatched when its parameter is missing; got \${driver.dispatched}",
+        )
     }
 
     @Test

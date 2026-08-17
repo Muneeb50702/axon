@@ -176,7 +176,36 @@ public class DefaultSkillCompiler : SkillCompiler {
             expect = action.expect,
             llmFallback = allowsFallback(action, trace),
             bindings = bindings,
+            args = argsOf(action),
         )
+    }
+
+    /**
+     * The action's non-selector payload (E22c).
+     *
+     * Everything a step needs that is not a [Target]. Without this the compiler
+     * kept only `action.target`, which is `null` by definition for `launch_app`,
+     * `press_key` and `wait`, and which never carried the direction for `swipe`
+     * or `scroll` — so those steps compiled to something unreplayable, or worse,
+     * to something the replayer would fill in with a default and execute anyway.
+     *
+     * Exhaustive `when` on purpose: a new [DeviceAction] variant must be handled
+     * here, and the compiler will not build until it is. That is the property
+     * that was missing, and it matters more than the fix itself — the original
+     * bug was not a wrong line, it was a payload that could go missing without
+     * anything noticing.
+     */
+    private fun argsOf(action: DeviceAction): Map<String, String> = when (action) {
+        is DeviceAction.LaunchApp -> mapOf("app" to action.app)
+        is DeviceAction.PressKey -> mapOf("key" to action.key.name)
+        is DeviceAction.Swipe -> mapOf("direction" to action.direction.name)
+        is DeviceAction.Scroll -> mapOf("direction" to action.direction.name)
+        // The literal typed text. A step whose text is slot-bound overrides this
+        // at replay from the caller's params; keeping the literal as well means a
+        // skill compiled from an unparameterised run still replays.
+        is DeviceAction.InputText -> mapOf("text" to action.text)
+        is DeviceAction.Wait -> mapOf("timeout_ms" to action.timeoutMs.toString())
+        is DeviceAction.Tap, is DeviceAction.LongPress -> emptyMap()
     }
 
     /**

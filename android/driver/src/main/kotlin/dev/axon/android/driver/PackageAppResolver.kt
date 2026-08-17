@@ -3,6 +3,7 @@ package dev.axon.android.driver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.util.Log
 import dev.axon.core.planner.AppResolver
 
 /**
@@ -31,11 +32,33 @@ public class PackageAppResolver(context: Context) : AppResolver {
     private val launchable: List<Pair<String, String>> by lazy {
         val pm = appContext.packageManager
         val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        pm.queryIntentActivities(intent, 0).mapNotNull { info ->
+        val found = pm.queryIntentActivities(intent, 0).mapNotNull { info ->
             val pkg = info.activityInfo?.packageName ?: return@mapNotNull null
             val label = info.loadLabel(pm)?.toString()?.lowercase()?.trim() ?: return@mapNotNull null
             label to pkg
         }.distinctBy { it.second }
+
+        // E21c. An empty list here is not "this phone has no apps" — it is
+        // Android 11+ package-visibility filtering, and the manifest is missing
+        // its <queries> declaration.
+        //
+        // Worth a loud log rather than a silent empty list, because every
+        // downstream symptom is misleading: `resolve` returns null, which is a
+        // legitimate answer meaning "ambiguous", so the planner falls back to
+        // ordinary screen-grounded planning and behaves plausibly-badly. E21's
+        // grammar collapse simply never fires, and nothing anywhere says why.
+        // That is how a feature passes its unit tests and is inert on hardware.
+        if (found.isEmpty()) {
+            Log.e(
+                TAG,
+                "no launchable apps visible — package-visibility filtering is on and " +
+                    "<queries> is missing from the manifest. E21 app-name resolution is " +
+                    "DISABLED; every 'open X' goal will fall back to free planning.",
+            )
+        } else {
+            Log.i(TAG, "E21c: ${found.size} launchable app(s) visible to the resolver")
+        }
+        found
     }
 
     override suspend fun resolve(name: String): String? {
@@ -60,4 +83,8 @@ public class PackageAppResolver(context: Context) : AppResolver {
 
     /** Installed launchable apps, for diagnostics and the permissions screen. */
     public fun installedApps(): List<Pair<String, String>> = launchable.sortedBy { it.first }
+
+    private companion object {
+        const val TAG = "PackageAppResolver"
+    }
 }

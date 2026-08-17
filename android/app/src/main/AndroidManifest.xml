@@ -23,6 +23,38 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!--
+      Package visibility, scoped to what the user can already see (E21c).
+
+      Android 11+ hides installed packages from an app unless it declares what it
+      needs. AXON declared nothing, which was not a decision — it was an
+      omission, and it silently disabled a feature: `PackageAppResolver` resolves
+      "whatsapp" to com.whatsapp by reading the launcher's list, and with no
+      visibility that list is empty. So E21's grammar collapse — the strongest
+      constraint in the system, narrowing the model to exactly one legal action —
+      never fired on device. It passed every unit test and was inert on hardware.
+
+      The fix is NOT QUERY_ALL_PACKAGES. That permission reveals every installed
+      package including the non-launchable ones — services, providers, things the
+      user has no icon for — which is what makes it stalkerware-adjacent, why
+      §6.3 excludes it, and why Google Play restricts it.
+
+      This <queries> element is strictly narrower: it grants visibility of apps
+      that have a launcher icon, and nothing else. That is precisely the set the
+      user already sees on their home screen and can already tap. AXON learns
+      nothing about the device that its owner cannot learn by looking at it.
+
+      Scoping visibility explicitly is a better §16 story than the accidental
+      version it replaces, where the restriction held by omission and the cost
+      was a feature failing silently.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"

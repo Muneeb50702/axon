@@ -143,6 +143,39 @@ data class CompiledStep(
      * exact task it was recorded from.
      */
     val bindings: Map<String, String> = emptyMap(),
+
+    /**
+     * The action's payload that is **not** a UI selector (E22c).
+     *
+     * `launch_app` carries a package, `press_key` a key name, `swipe` and
+     * `scroll` a direction, `input_text` its literal text. None of those is a
+     * [Target], because none of them locates an element on screen — and
+     * [DeviceAction.LaunchApp], [DeviceAction.PressKey] and [DeviceAction.Wait]
+     * accordingly define `target` as always `null`.
+     *
+     * ## Why this field had to exist
+     *
+     * The compiler used to derive a step's entire payload from `action.target`,
+     * so anything not expressible as a selector was **silently discarded**. Only
+     * `tap` and `long_press` survived compilation intact. Measured on device:
+     * "open whatsapp" compiled to a step with no package at all, replay could
+     * not reconstruct the action, and the run fell back to a 66-second cold plan
+     * — while `replay_count` incremented, so the store recorded a replay that
+     * had not happened.
+     *
+     * Two of the losses were worse than a failure. With no payload the replayer
+     * *defaulted*: `press_key` to BACK, `swipe` to UP, `scroll` to DOWN. A skill
+     * that recorded "press HOME" would have replayed "press BACK" — a wrong
+     * action executed confidently against a live device, which is precisely the
+     * failure mode every structural defence in this project exists to prevent.
+     *
+     * The bug survived because E17's headline was measured with a hand-written
+     * `tap` skill, and `tap` is one of the two types that happened to work.
+     * `SkillCompilerTest` now round-trips every action type in
+     * [DeviceAction.ACTION_TYPES], so a new action cannot be added without
+     * either surviving the round trip or failing a test.
+     */
+    val args: Map<String, String> = emptyMap(),
 )
 
 /**

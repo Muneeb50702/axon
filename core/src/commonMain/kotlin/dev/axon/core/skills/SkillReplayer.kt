@@ -159,7 +159,19 @@ public class SkillReplayer(
             Target(s.by, value)
         }
 
+        // Slot-bound text wins over the compiled literal, so a parameterised
+        // skill types the caller's value; the literal is what makes a skill
+        // compiled from an unparameterised run replayable at all.
         val text = step.bindings["text"]?.let { params[it] ?: return null }
+            ?: step.args["text"]
+
+        // Payload lookup, with the pre-E22c location as a fallback.
+        //
+        // Skills compiled before `args` existed stored nothing here, and skills
+        // hand-written for the measurement harness put the payload in the
+        // selector. Reading both means neither has to be migrated, and a skill
+        // that genuinely lacks a payload still fails closed below.
+        fun arg(name: String): String? = step.args[name] ?: step.selector?.value
 
         return when (step.action) {
             "tap" -> selector?.let { DeviceAction.Tap(it, step.expect) }
@@ -167,23 +179,31 @@ public class SkillReplayer(
             "input_text" -> selector?.let {
                 DeviceAction.InputText(it, text ?: return null, step.expect)
             }
-            "launch_app" -> DeviceAction.LaunchApp(step.selector?.value ?: return null, step.expect)
-            "press_key" -> DeviceAction.PressKey(
-                runCatching { DeviceKey.valueOf(step.selector?.value?.uppercase() ?: "BACK") }
-                    .getOrDefault(DeviceKey.BACK),
+            "launch_app" -> DeviceAction.LaunchApp(arg("app") ?: return null, step.expect)
+
+            // These three used to *default* when the payload was missing — to
+            // BACK, UP and DOWN respectively — which meant a skill that had lost
+            // its payload replayed a confidently wrong action against a live
+            // device. A missing payload is now a failed materialisation, so the
+            // step stops and can be repaired or escalated. Refusing to act beats
+            // guessing which key the user meant.
+            "press_key" -> arg("key")
+                ?.let { name -> runCatching { DeviceKey.valueOf(name.uppercase()) }.getOrNull() }
+                ?.let { DeviceAction.PressKey(it, step.expect) }
+
+            "swipe" -> arg("direction")
+                ?.let { d -> runCatching { Direction.valueOf(d.uppercase()) }.getOrNull() }
+                ?.let { DeviceAction.Swipe(it, target = selector, expect = step.expect) }
+
+            "scroll" -> arg("direction")
+                ?.let { d -> runCatching { Direction.valueOf(d.uppercase()) }.getOrNull() }
+                ?.let { DeviceAction.Scroll(it, target = selector, expect = step.expect) }
+
+            "wait" -> DeviceAction.Wait(
                 step.expect,
+                timeoutMs = step.args["timeout_ms"]?.toLongOrNull()
+                    ?: DeviceAction.Wait.DEFAULT_WAIT_MS,
             )
-            "swipe" -> DeviceAction.Swipe(
-                runCatching { Direction.valueOf(step.selector?.value?.uppercase() ?: "UP") }
-                    .getOrDefault(Direction.UP),
-                expect = step.expect,
-            )
-            "scroll" -> DeviceAction.Scroll(
-                runCatching { Direction.valueOf(step.selector?.value?.uppercase() ?: "DOWN") }
-                    .getOrDefault(Direction.DOWN),
-                expect = step.expect,
-            )
-            "wait" -> DeviceAction.Wait(step.expect)
             else -> null
         }
     }

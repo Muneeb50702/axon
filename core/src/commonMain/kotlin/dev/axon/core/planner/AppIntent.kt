@@ -1,5 +1,7 @@
 package dev.axon.core.planner
 
+import dev.axon.core.model.CompactState
+
 /**
  * Recognises "open <app>" goals and resolves them to a package (E21).
  *
@@ -59,6 +61,44 @@ public object AppIntent {
             return rest.removePrefix("the ").trim().ifEmpty { null }
         }
         return null
+    }
+
+    /**
+     * A success oracle for a pure launch goal, or `null` if this is not one.
+     *
+     * ## Why the grammar collapse was only half of E21
+     *
+     * Measured on device (E21b): with the grammar narrowed, all six generations
+     * emitted `launch_app com.whatsapp`, the gate approved every one and the
+     * verifier confirmed every one. The mechanism worked exactly as claimed —
+     * and the task still ended in `BUDGET_EXHAUSTED` at 426 seconds, having
+     * launched WhatsApp six times.
+     *
+     * Nothing was wrong with any individual decision. The runtime simply had no
+     * way to know it was finished, because a caller with no oracle passes one
+     * that never fires, and `RepetitionGuard` — which blocks actions that
+     * *failed* — correctly stayed silent while every step succeeded.
+     *
+     * ## The oracle is determined by the same reasoning that collapsed the grammar
+     *
+     * If "open X" has exactly one correct action without consulting the model,
+     * it has exactly one success condition too: **X is in the foreground.** The
+     * package lookup that makes the action determinable makes the completion
+     * test determinable, and reading it off the observed state costs nothing and
+     * asks the model nothing — which is the same reason C2 replaced LLM
+     * self-assessment with a deterministic verifier.
+     *
+     * Returns `null` for anything that is not entirely a launch request, so a
+     * multi-step goal never inherits a success test that would fire after its
+     * first step. That is [appName]'s conservatism, reused rather than restated.
+     */
+    public suspend fun launchOracle(
+        goal: String,
+        resolver: AppResolver,
+    ): (suspend (CompactState) -> Boolean)? {
+        val name = appName(goal) ?: return null
+        val packageName = resolver.resolve(name) ?: return null
+        return { state -> state.foregroundPackage == packageName }
     }
 
     /** Verbs that mean "bring this app to the front". */
