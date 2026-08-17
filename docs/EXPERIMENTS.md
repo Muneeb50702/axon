@@ -2022,14 +2022,122 @@ absent. Second time this session a test has been green for the wrong reason
 (cf. E22c), and both were found by changing the code underneath rather than by
 reading the test.
 
-### Not yet measured
+### Confirmed on device
+
+*trace `trace-1786974922669-0`* — E24e repeated with the fix in place, same goal,
+same launcher start, ~20 minutes later.
+
+The comparison is exact, because both runs reached the same step against the same
+screen:
+
+| step 1 | E24e (pre-fix) | post-fix |
+|---|---|---|
+| action | `tap content_desc="Search"` | **`tap text="Search"`** |
+| precondition | **✘ rejected** | **✔ passed** |
+| reason | *no element matching content_desc="Search"…* | — the tap was dispatched |
+
+The grammar emitted `by:"text"` for a text-only element and the gate accepted it.
+Steps 2–3 likewise selected `text="Find documents or tools by keywords"`, a hint
+field carrying no content-description — reachable now, unreachable before.
+
+**What did not change, exactly as predicted.** Both runs ESCALATED and neither
+opened WhatsApp:
+
+| | E24e (pre-fix) | post-fix |
+|---|---|---|
+| outcome | ESCALATED | ESCALATED |
+| wall clock | 509.1 s | 294.1 s |
+| model calls | 6 | 4 |
+| WhatsApp launched | ✘ | ✘ |
+| first action | tap **CamScanner** | tap **CamScanner** |
+
+E31 fixes selector *mechanics*. Choosing CamScanner when asked for WhatsApp is
+E18b's *semantic* failure class, and the missing success oracle (E24c) is
+untouched. The shorter run and fewer calls are **not** claimed as an
+improvement — n = 1 per arm on a device whose latency varies with thermal and
+memory state (E6b).
+
+### Left open by this run
+
+Steps 2 and 3 are the **same action on the same screen**, the first having failed
+(`post ✘`), and step 3 was still dispatched — its failure reason is the
+verifier's *"the screen did not change at all"*, not the gate's. `RepetitionGuard`
+records failures by `(screenHash, signature)` and should have blocked it.
+
+Either the guard is not consulted on this path or the screen hash differed
+between the two observations. Not chased here — the device was at 14% battery —
+but it is a defence that may not be running, which is precisely the E21c/E29
+failure shape, so it is logged rather than left as a curiosity: **E32**.
+
+### Still not measured
 
 The defect cost one planning step (~84 s) in the one run where it was observed;
 **no claim is made about how often it fires.** That needs the ablation corpus,
 and it is screen-dependent by construction — a UI whose elements all carry
-content-descriptions would never trigger it. Whether E24e's specific run would
-now proceed further is also unmeasured: the fix removes one wrong turn, and the
-missing success oracle that made the run pointless (E24c) is untouched.
+content-descriptions would never trigger it.
+
+---
+
+## E32 — The repetition guard was keyed on a fingerprint that drifts
+
+*2026-08-17 · found in E31's device trace · 5 new tests · **the device repro is
+not re-run***
+
+### What the trace showed
+
+E31's verification run ended with two identical steps:
+
+| step | action | pre | post | failure |
+|---|---|---|---|---|
+| 2 | `tap text="Find documents or tools by keywords"` | ✔ | **✘** | *…showing: Find documents…, Cancel* |
+| 3 | **the same action** | ✔ | ✘ | *the screen did not change at all* |
+
+Step 2 failed and step 3 was dispatched anyway. `RepetitionGuard` exists to make
+that structurally impossible — it is E18's fix, where a 1B planner proposed the
+identical rejected action three times despite a failure context naming it.
+
+### The guard was wired correctly
+
+`DefaultAgentRuntime` calls `recordFailure` on every failed step and `isBlocked`
+before every dispatch, both keyed on `tree.contentHash`. Nothing was missing.
+
+The **key** was the problem. `UiTree.contentHash` already excludes timestamps and
+bounds, so a settling animation does not read as a change — that care is real and
+it stops one class of drift. But it hashes **every node, in order**, so on
+CamScanner's search screen a cursor, a keyboard row or a hint state moved the
+fingerprint between two observations of what the planner saw as the same screen.
+The key drifted, the lookup missed, and the guard silently stopped guarding.
+
+That is E21c's shape exactly: a structural defence that passes every unit test —
+the guard's own tests are all green, because they hand it stable hashes — and
+degrades on real screens with nothing in any log to say so.
+
+### Fix: key on what the planner was shown
+
+`CompactState.viewHash`, used by the guard in place of `sourceHash`.
+
+The projection is already pruned to interactable elements and capped at 40, so a
+decoration the planner never saw cannot move it. It is hashed as an **unordered**
+set, because a transient element inserted mid-list shifts every index after it
+without changing which actions are available.
+
+Two hashes, deliberately, rather than making `contentHash` more tolerant: the
+*verifier* wants tree-level sensitivity — "did anything at all change?" is how it
+detects a dead tap — and the *guard* wants "is this the same decision problem?"
+Those are different questions and one fingerprint cannot answer both.
+
+`ViewHashTest` asserts the distinction directly, including the precondition that
+`sourceHash` **does** move on the case where `viewHash` must not — so the test
+documents the bug rather than merely avoiding it.
+
+### What is not claimed
+
+The device repro was not re-run: the phone was at 14% battery and each attempt
+costs ~5 minutes of planning. So the fix is verified by construction and by test,
+**not** by observing the guard fire on hardware. Also unmeasured: how often the
+drift occurred across the earlier runs. It is visible in this one trace because
+two consecutive steps happened to be identical; a drift that merely *delayed*
+blocking would not show up at all.
 
 ---
 
@@ -2064,3 +2172,4 @@ discovered late.
 | E26b | Does selector promotion reduce replay breakage under LAYOUT_VARIANT? | Phase 7 |
 | E27b | Skill-drift rate, and whether retirement thresholds fire correctly | Phase 7 |
 | E30 | The §14.3 **verifier** arm has no device path; grammar and skill-replay now do | needs an executor switch |
+| E32b | Confirm on device that the re-keyed repetition guard actually fires | needs a charged phone |

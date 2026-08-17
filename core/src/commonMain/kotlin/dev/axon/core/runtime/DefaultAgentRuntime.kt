@@ -110,8 +110,14 @@ public class DefaultAgentRuntime(
             //
             // `wait` is exempt — waiting twice on an unchanged screen is the
             // whole point of waiting.
+            // Keyed on what the *planner saw* (E32), not on the raw tree.
+            // `tree.contentHash` hashes every node in order, so a cursor blink or
+            // a keyboard row moved the key while the screen was, to the planner,
+            // identical — and the guard silently stopped blocking. Observed on
+            // device: the same failed tap re-dispatched on CamScanner's search
+            // screen.
             if (decision.action !is DeviceAction.Wait &&
-                repetition.isBlocked(tree.contentHash, decision.action)
+                repetition.isBlocked(state.viewHash, decision.action)
             ) {
                 heals++
                 exhausted += decision.action
@@ -141,7 +147,9 @@ public class DefaultAgentRuntime(
             }
 
             // --- self-heal (§7.6) ---
-            repetition.recordFailure(tree.contentHash, decision.action)
+            // Same key as the check above, necessarily. Recording under one
+            // fingerprint and testing under another is a guard that never fires.
+            repetition.recordFailure(state.viewHash, decision.action)
             heals++
             if (heals > goal.healBudget * goal.stepBudget) {
                 return result(goal, steps, llmCalls, started, TaskOutcome.ESCALATED, heals, healsSucceeded)

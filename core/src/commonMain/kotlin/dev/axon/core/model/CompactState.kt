@@ -34,6 +34,43 @@ data class CompactState(
     val sourceHash: Int = 0,
 ) {
     /**
+     * Fingerprint of **what the planner was shown** — E32.
+     *
+     * [RepetitionGuard][dev.axon.core.runtime.RepetitionGuard] keys on this
+     * rather than on [sourceHash], and the difference is the whole point.
+     *
+     * [UiTree.contentHash] is a fingerprint of the *tree*. It already excludes
+     * timestamps and bounds so that a 1-pixel scroll or a settling animation does
+     * not read as a change — but it still hashes **every node, in order**, so a
+     * blinking cursor, a keyboard row, a spinner or a toast changes it while the
+     * screen is, to the planner, identical.
+     *
+     * That silently disables the guard. Observed on device (E31's run): the
+     * planner proposed the same tap on CamScanner's search screen twice, the
+     * first failed, and the second was dispatched anyway — the guard's key had
+     * moved underneath it. A structural defence that degrades on real screens
+     * while passing every unit test is E21c's failure shape exactly, and the
+     * reason this is a named field rather than a tweak to `contentHash`:
+     * the verifier *wants* tree-level sensitivity, and the guard does not.
+     *
+     * So this hashes the projection instead — already pruned to interactable
+     * elements and capped at [MAX_NODES] — and as an **unordered** set, because a
+     * transient element inserted mid-list shifts every index after it without
+     * changing which actions are available.
+     */
+    val viewHash: Int by lazy {
+        var h = foregroundPackage.hashCode()
+        h = 31 * h + (screenTitle?.hashCode() ?: 0)
+        // Summed, not folded: addition is commutative, so the result does not
+        // depend on the order elements happen to arrive in.
+        var elementsHash = 0
+        for (e in elements) {
+            elementsHash += (e.role.hashCode() * 31) xor (e.label?.hashCode() ?: 0)
+        }
+        31 * h + elementsHash
+    }
+
+    /**
      * Render for the prompt (§7.4).
      *
      * One line per element, `[index] role "label"` plus terse flags. Chosen over
