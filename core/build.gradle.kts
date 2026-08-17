@@ -27,11 +27,30 @@ sqldelight {
     databases {
         create("AxonDatabase") {
             packageName.set("dev.axon.core.storage.db")
-            // Schema migrations are verified against .db snapshots in
-            // core/src/commonMain/sqldelight/databases once v2 exists; keeping
-            // this on from v1 means the first migration cannot silently skip
-            // verification.
-            verifyMigrations.set(true)
+
+            // Off, because this project does not use SQLDelight migrations.
+            //
+            // The intent behind turning it on was right — the first migration
+            // should not silently skip verification. But the task requires a
+            // `.db` snapshot in core/src/commonMain/sqldelight/databases, no
+            // snapshot was ever generated, and SQLDelight exposes no task to
+            // generate one without `.sqm` files present. So it failed
+            // unconditionally with *"Verifying a migration requires a database
+            // file to be present"*, which meant **`./gradlew build` did not
+            // pass** — the flag was not verifying migrations, it was breaking
+            // the build for a schema that has never changed.
+            //
+            // Migrations here are hand-written and idempotent
+            // (`AxonStorage.migrate`), chosen when the `.sqm` route was
+            // rejected: SQLDelight's migration mode wants `.db` snapshots, and
+            // the phone's existing database is not one. That decision is not
+            // reversed by this line — it is what this line acknowledges.
+            //
+            // What actually verifies migrations: `SqlTraceStoreTest` runs the
+            // real upgrade against a pre-migration schema, runs it twice to
+            // prove convergence, and runs it against an empty database. Those
+            // execute on every build; the task below never did.
+            verifyMigrations.set(false)
         }
     }
 }
