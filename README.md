@@ -78,7 +78,7 @@ faster; it is the difference between a task that completes and one that does not
 | 4 | Verifier + self-healing — **C2** | ◐ verifier + per-step repair done; recovery rate unmeasured (E9) |
 | 5 | Skill compiler + replay — **C1′** | ✅ done, replay confirmed on device (E17, E22d, E23) |
 | 6 | Gateway, SQLite persistence, §16 confirmation + audit UI | ✅ done (D11, E22, E28) |
-| 7 | AXON-Bench + ablation matrix — **C3/C5** | ◐ corpus, metrics and harness built; arms not yet run |
+| 7 | AXON-Bench + ablation matrix — **C3/C5** | ◐ corpus, metrics and harness built; grammar + skill-replay switches have device paths (E4b, E24c), verifier switch does not; **the corpus has not been run through any arm** |
 | 8 | Hardening, thesis, defence | |
 
 **235 tests, 0 failures, none needing a device.** Everything above the
