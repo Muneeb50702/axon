@@ -70,6 +70,81 @@ public object AxonStorage {
     }
 
     /**
+     * Bring an existing database up to the current schema (E26).
+     *
+     * ## The install that would have failed
+     *
+     * `trace_step` gained three columns for E26's resolved selector handles. The
+     * build stayed green and every test passed, because `Schema.create()` runs
+     * only against a *fresh* database and every test opens a temp file. The
+     * phone — holding a database with real learned skills in it — would have got
+     * the old table, and the first task after upgrading would have failed on an
+     * `insertStep` naming columns that did not exist.
+     *
+     * Same class as D11's SQLite-dialect trap and E21c's package visibility:
+     * **the developer's environment is not the deployment environment.** Here
+     * the difference is a table that already exists.
+     *
+     * ## Why this is hand-rolled rather than a `.sqm`
+     *
+     * SQLDelight's migration support wants versioned `.sqm` files validated
+     * against `.db` schema snapshots. That is the right machinery for a schema
+     * with a history, and adopting it *after* the `.sq` had already been changed
+     * would mean reconstructing a snapshot of a version no longer in the tree.
+     *
+     * So this applies additive columns idempotently instead, by asking SQLite
+     * what the table currently has. It is honest about its limits: it handles
+     * **added nullable columns only**. A change that renames, drops or retypes a
+     * column needs real migrations, and that is the point to adopt `.sqm` files
+     * properly rather than extending this.
+     *
+     * Idempotent by construction — reading `PRAGMA table_info` rather than
+     * tracking a version number means a half-applied upgrade, or one applied by
+     * an older build, converges rather than failing.
+     */
+    public fun migrate(driver: SqlDriver) {
+        val existing = columnsOf(driver, "trace_step")
+
+        // An empty result means the table is absent — a fresh database, where
+        // `createSchema` is the caller's job and there is nothing to migrate.
+        if (existing.isEmpty()) return
+
+        for ((column, type) in ADDED_IN_E26) {
+            if (column in existing) continue
+            driver.execute(null, "ALTER TABLE trace_step ADD COLUMN $column $type", 0)
+        }
+    }
+
+    /** Column names of [table], or empty when it does not exist. */
+    private fun columnsOf(driver: SqlDriver, table: String): Set<String> =
+        driver.executeQuery(
+            identifier = null,
+            sql = "PRAGMA table_info($table)",
+            parameters = 0,
+            mapper = { cursor ->
+                val names = mutableSetOf<String>()
+                while (cursor.next().value) {
+                    // PRAGMA table_info columns: cid, name, type, notnull, ...
+                    cursor.getString(1)?.let { names += it }
+                }
+                app.cash.sqldelight.db.QueryResult.Value(names.toSet())
+            },
+        ).value
+
+    /**
+     * Columns added by E26, as `name to type`.
+     *
+     * Nullable on purpose: adding a nullable column rewrites no rows, which
+     * matters on a Helio G85 with a trace history — a table rebuild would be a
+     * visible freeze at launch.
+     */
+    private val ADDED_IN_E26 = listOf(
+        "resolved_view_id" to "TEXT",
+        "resolved_content_desc" to "TEXT",
+        "resolved_text" to "TEXT",
+    )
+
+    /**
      * SQLite stores every INTEGER as a 64-bit value, so the narrower Kotlin
      * types declared in the `.sq` files need converting on the way through.
      *

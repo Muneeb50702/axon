@@ -1293,6 +1293,34 @@ future replay, and the skill would silently only ever message her - precisely th
 macro-versus-skill error §7.7 warns about. A slot-bound selector is left exactly
 as written.
 
+### The install that would have failed
+
+Adding those columns to `Trace.sq` left the build green and every test passing,
+because `Schema.create()` runs only against a **fresh** database and every test
+opens a temp file. The phone — holding a database with real learned skills in it
+— would have kept the old table, and the first task after upgrading would have
+failed on an INSERT naming columns that did not exist.
+
+Third instance of one pattern, after D11's SQLite-dialect trap and E21c's package
+visibility: **the developer's environment is not the deployment environment.**
+Here the difference is a table that already exists.
+
+`AxonStorage.migrate()` applies additive columns idempotently, by asking SQLite
+what the table currently has rather than tracking a version number, so a
+half-applied upgrade converges rather than wedging. It is honest about its limit:
+**added nullable columns only.** A rename, drop or retype needs real versioned
+migrations, and that is the point to adopt SQLDelight `.sqm` files rather than
+extending this.
+
+Verified on the device that held real data:
+
+| | before | after |
+|---|---|---|
+| skills | 2 | **2** |
+| traces | 9 | **9** |
+| `trace_step` columns | 12 | **15** |
+| hydrate at launch | — | **35 ms** |
+
 ### Status and what it is worth
 
 Implemented and unit-tested; **not yet demonstrated to reduce breakage**, because

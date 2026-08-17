@@ -55,6 +55,19 @@ object AndroidAxonStorage {
                 }
             },
         )
+
+        // E26: bring an existing database up to the current schema.
+        //
+        // `Schema.create()` runs only for a fresh install, so an upgrade over a
+        // store that already holds learned skills would keep the old table and
+        // fail on the first task, on an INSERT naming columns that do not exist.
+        // Every test opens a temp file and therefore never saw it; the phone
+        // would have.
+        //
+        // Idempotent, so running it on every open is safe and a half-applied
+        // upgrade converges rather than wedging.
+        AxonStorage.migrate(driver)
+
         return AxonStorage.database(driver)
     }
 }

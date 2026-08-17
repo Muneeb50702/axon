@@ -242,4 +242,74 @@ class SqlTraceStoreTest {
             "a value this build cannot interpret must never become a replayable skill",
         )
     }
+
+    @Test
+    fun `a database from before E26 upgrades instead of failing`() = runTest {
+        // The install that would have broken. `Schema.create()` runs only for a
+        // fresh database, so every test — which opens a temp file — always got
+        // the new table shape. A phone holding real learned skills would have got
+        // the old one, and the first task after upgrading would have failed on an
+        // INSERT naming columns that did not exist.
+        //
+        // This builds the pre-E26 shape explicitly and then uses the store
+        // normally, which is the only way to test an upgrade path that by
+        // definition never occurs in a clean environment.
+        val store = openStore()
+        val driver = drivers.last()
+
+        // Drop back to the old shape.
+        driver.execute(null, "DROP TABLE trace_step", 0)
+        driver.execute(
+            null,
+            """
+            CREATE TABLE trace_step (
+                trace_id TEXT NOT NULL REFERENCES trace(trace_id) ON DELETE CASCADE,
+                step INTEGER NOT NULL,
+                action_json TEXT NOT NULL,
+                action_type TEXT NOT NULL,
+                pre_ok INTEGER NOT NULL,
+                post_ok INTEGER NOT NULL,
+                healed INTEGER NOT NULL,
+                latency_ms INTEGER NOT NULL,
+                llm_calls INTEGER NOT NULL DEFAULT 0,
+                state_hash_before INTEGER NOT NULL DEFAULT 0,
+                state_hash_after INTEGER NOT NULL DEFAULT 0,
+                failure_reason TEXT,
+                PRIMARY KEY (trace_id, step)
+            )
+            """.trimIndent(),
+            0,
+        )
+
+        AxonStorage.migrate(driver)
+
+        // The whole point: a write that names the new columns must now work.
+        store.append(trace())
+        val loaded = store.all().single()
+        assertEquals(2, loaded.steps.size)
+    }
+
+    @Test
+    fun `migrating twice is harmless`() = runTest {
+        // Run on every open, so it has to converge rather than fail the second
+        // time — including after a half-applied upgrade by an older build.
+        val store = openStore()
+        val driver = drivers.last()
+
+        AxonStorage.migrate(driver)
+        AxonStorage.migrate(driver)
+
+        store.append(trace())
+        assertEquals(1, store.count())
+    }
+
+    @Test
+    fun `migrating a database with no tables does nothing`() = runTest {
+        // A fresh install: `createSchema` is the caller's job and there is
+        // nothing to alter. Must not throw on a table that does not exist.
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        drivers.clear()
+        AxonStorage.migrate(driver)
+        runCatching { driver.close() }
+    }
 }
