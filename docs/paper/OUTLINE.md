@@ -170,6 +170,43 @@ encounter:
   parameters; the file is 3.11 GB. Conflating the two mis-sizes the memory
   budget — an easy error, and one the surrounding literature invites.
 
+#### 8.1 One lesson, three independent instances
+
+The findings above are individually useful. The following three are the same
+finding arriving by three unrelated routes, which is what makes it worth a
+section rather than a footnote:
+
+> **The developer's environment is not the deployment environment**, and on
+> Android the gap is systematic rather than incidental: the toolchain, the
+> emulator and the test fixture each present a *more capable and more forgiving*
+> world than the device does.
+
+| instance | what the developer sees | what the device does | id |
+|---|---|---|---|
+| SQL dialect | the newest SQLite, so upsert syntax compiles | API 26 ships SQLite 3.18; upsert arrived in 3.24, and the statement fails only in the field | **D11** |
+| package visibility | tests inject an app list, so name resolution works | Android 11+ hides installed packages; the resolver saw **zero** apps and the strongest constraint in the system was inert | **E21c** |
+| schema creation | every test opens a fresh database, so `create()` always runs | the phone has a database that already exists; `create()` is skipped and the first write names columns that are not there | **E26** |
+
+Each passed every unit test. Each was invisible in CI. Two of the three were
+found only because a *different* app or a *real* upgrade was tried, and the
+third was caught by a build that happened to target the minimum API rather than
+the developer's.
+
+The transferable claim is narrower and sharper than "test on real devices":
+**unit tests establish that code is correct, not that it is reachable.** For an
+agent whose defences are structural — a grammar, a gate, a verifier — a defence
+that is switched off by the platform is indistinguishable, in every log the
+system produces, from a defence that is working and simply had nothing to do.
+
+*Evidence: D11, E21c, E25, E26.*
+
+- **Timing constants are sized for the developer's app.** Post-condition
+  verification used a fixed 500 ms settle, correct for an Android transition and
+  far too short for a cold app start on a Helio G85. Every experiment to that
+  point had used WhatsApp, which starts fast enough to hide it; the first heavy
+  app tried (LinkedIn) turned a successful launch into a 203-second escalation.
+  **E25**
+
 ### 9. Threats to validity
 
 Written honestly and early, since the weaknesses are known:
@@ -205,6 +242,9 @@ analysis.
 |---|---|
 | Citations | §2 has project names, no references. Needs a real literature pass. |
 | E7–E14 | Most evaluation is unmeasured; Phases 3–7. |
+| E24c | Composition is measured working (E24b) but never compared against the cold path it claims to replace. The interesting outcome is a failure — a compound goal the PLAN path cannot finish — and until it is run, C1′-as-viability rests on arithmetic. |
+| E26b / E27b | Selector promotion and skill retirement are implemented and unit-tested but **not shown to reduce breakage**. Skill drift has never been quantified here; both need the robustness tier's `LAYOUT_VARIANT` runs. |
+| Valid-action rate in the harness | Cannot be derived from traces — it needs the planner's generation counts. Measured correctly in E4b's instrumentation; the JVM harness reports "not measured" rather than a plausible wrong number. |
 | Second device | One handset is a validity problem. A second SoC, even borrowed, materially strengthens the paper. |
 | Variance | Single-shot measurements must be repeated with n ≥ 5. |
 | Artifact | Repo, corpus and raw logs should be release-ready — the reproducibility split in §7 is a selling point only if the artifact exists. |
