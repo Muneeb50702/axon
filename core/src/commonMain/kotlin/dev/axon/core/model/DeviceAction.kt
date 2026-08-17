@@ -186,7 +186,32 @@ enum class TargetBy {
      * coordinate selectors is brittle by construction. The compiler (§7.7)
      * penalises these when choosing a selector.
      */
-    @SerialName("coord") COORD,
+    @SerialName("coord") COORD;
+
+    /**
+     * The name this selector goes by on the wire — the same string `@SerialName`
+     * emits.
+     *
+     * Exists because the screen grammar (E31) writes `by` values directly into
+     * GBNF literals, and it must write exactly what the parser will later read.
+     * Reaching for `name.lowercase()` would produce `content_desc` correctly and
+     * `coord` correctly and then silently disagree the day a variant is added
+     * whose Kotlin name is not its wire name — a grammar that emits a token the
+     * deserialiser rejects, which is the one failure C3 exists to make
+     * impossible.
+     *
+     * Kept beside the annotations rather than derived from the serial
+     * descriptor so the two are edited together and a mismatch is visible on one
+     * screen. `TargetByWireTest` asserts they agree.
+     */
+    public val wire: String
+        get() = when (this) {
+            TEXT -> "text"
+            ID -> "id"
+            CONTENT_DESC -> "content_desc"
+            CLASS -> "class"
+            COORD -> "coord"
+        }
 }
 
 /** An element selector: a strategy plus the value to match (§10.1). */

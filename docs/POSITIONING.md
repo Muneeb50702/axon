@@ -147,7 +147,7 @@ produced.
 ### 3.5 Determinism as a design method, applied repeatedly
 
 The strongest thing to come out of building this is not any single mechanism. It
-is that **one rule was applied five times, to five different decisions**, and
+is that **one rule was applied six times, to six different decisions**, and
 each time it removed a failure the model was demonstrably making:
 
 | decision | determined by | the failure it removed |
@@ -157,6 +157,15 @@ each time it removed a failure the model was demonstrably making:
 | which app "open X" means | package lookup (E21) | **opening the dialer instead of WhatsApp** (E18b) |
 | when a launch goal is finished | foreground package (E21b) | launching WhatsApp six times and exhausting the budget |
 | where one task ends and the next begins | sequencing words (E24) | cold-planning a compound goal whose halves were already known |
+| which attribute selects an element | the tree (E31) | naming a real on-screen label with a `by` that cannot resolve it |
+
+The sixth row is the one that most clearly shows the rule is *productive* rather
+than a post-hoc description. It was not designed: the grammar had grounded a
+target's value and left `by` free, nobody had noticed the pair could be
+inconsistent, and E24e surfaced it as a self-contradictory error message on a
+phone. Applying the rule — *which attribute identifies an element is a fact about
+the tree* — both fixed the defect and made the model's output smaller, since `by`
+is no longer generated at all.
 
 The rule: **where the correct answer is determinable without the model, do not
 ask the model.** Each application is individually small. Together they are a

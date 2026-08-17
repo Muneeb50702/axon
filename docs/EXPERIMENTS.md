@@ -1857,6 +1857,182 @@ is *not* in doubt: the signal, the sender, the batching, and the footprint.
 
 ---
 
+## E24e — The same failure from the launcher, and a grammar/gate disagreement
+
+*2026-08-17 · TECNO Camon 20 · battery 15%→14% · trace `trace-1786973691735-0`*
+
+E24c's honest caveat was that its cold runs started on **LinkedIn's screen**,
+left there by the control run. A dense app screen is a harder prompt, so "the
+compound goal loses its determinism mechanisms" and "that particular screen was
+distracting" were not separated. This repeats the run from the **launcher** —
+the most favourable screen available, where WhatsApp's icon is literally visible.
+
+| | |
+|---|---|
+| outcome | **ESCALATED** |
+| wall clock | **509.1 s** (8 min 29 s) |
+| model calls | **6** |
+| steps dispatched | 3 |
+| step latency, summed | 7.1 s — **98.6% of the run was inference** (~84 s/call) |
+| WhatsApp launched | **✘** |
+
+### The confound is eliminated
+
+Asked *"open whatsapp then go to linkedin"* with every app icon on screen, the
+cold path tapped **CamScanner**. Twice.
+
+| step | action | pre | post |
+|---|---|---|---|
+| 0 | `tap` content-desc **"CamScanner"**, expect "Search" | ✔ | ✔ |
+| 1 | `tap` content-desc **"Search"** | **✘** | ✘ |
+| 2 | `tap` content-desc **"CamScanner"**, expect "Search" | ✔ | ✔ |
+
+So E24c's result is **not** an artefact of a distracting screen. From the
+launcher, from an app screen — the cold path does not select the right app,
+because the mechanism that makes that selection correct by construction (E21's
+package lookup) is switched off for compound goals. This is the third independent
+observation of E18b's failure class and the strongest, because the environment
+was as favourable as it gets.
+
+Note also that steps 0 and 2 **succeeded** — `pre ✔ post ✔`. The agent tapped
+CamScanner, satisfied its own post-condition, and was no closer to the goal. A
+run can be locally correct at every step and globally useless; that is what
+having no success oracle actually costs.
+
+`RepetitionGuard` did not stop the repeat because it records *failures*, and
+step 0 did not fail. Correct as specified, and worth noting as a limit: the guard
+protects against retrying what did not work, not against repeating what did.
+
+### The bug this exposed
+
+Step 1's rejection message contradicts itself:
+
+```
+no element matching content_desc="Search" exists on this screen;
+this screen has: Search
+```
+
+Both halves are right, and that is the problem:
+
+- `UiNode.label` — which builds the screen grammar's alternation and this
+  diagnostic — is `contentDescription ?: text`.
+- `UiNode.matches(CONTENT_DESC)` requires `contentDescription` specifically.
+
+An element with `text="Search"` and no content-description is therefore
+**advertised under a name it cannot be matched by**.
+
+### Why this is a hole in C3, not a cosmetic defect
+
+E18's screen grammar claims that *a hallucinated target is unreachable at the
+sampler rather than caught later*. Its production is:
+
+```
+target ::= "{" "\"by\"" ":" by "," "\"value\"" ":" screen-label "}"
+                            ^^ unconstrained        ^^ restricted to on-screen labels
+```
+
+Only `value` is grounded. **The `by`/`value` *pair* is not**, so the grammar
+permits a target whose value is genuinely on screen and whose `by` cannot resolve
+it. The guarantee delivered is "the value is a real label", not "the target
+resolves" — and the gap is invisible on any screen whose elements all carry
+content-descriptions, which is most test fixtures and few real apps.
+
+The failure direction is the *safe* one: a legitimate action is refused, not an
+illegitimate one admitted. But it costs a planning step (~84 s here) and feeds
+the planner a self-contradictory reason to plan against.
+
+Fix and its evidence: **E31**.
+
+---
+
+## E31 — Grounding the whole selector, not half of it
+
+*2026-08-17 · fix for the defect E24e exposed · 7 new tests · **not yet
+re-measured on device***
+
+### The defect
+
+E18's screen grammar closes a token path so a hallucinated target is unreachable
+at the sampler. Its production grounded only the value:
+
+```gbnf
+target ::= "{" "\"by\"" ":" by "," "\"value\"" ":" screen-label "}"
+                            ^^ any of five        ^^ labels on screen
+```
+
+`UiNode.label` is `contentDescription ?: text`. So an element carrying only
+`text` is advertised under a name that `matches(CONTENT_DESC)` can never accept,
+and the grammar happily pairs the two. E24e caught it on device: the planner
+proposed `tap content_desc="Search"` and the gate answered
+
+```
+no element matching content_desc="Search" exists on this screen;
+this screen has: Search
+```
+
+Both halves true. **C3's guarantee was delivered by half** — "the value is a real
+label", not "the target resolves" — and the shortfall is invisible on any screen
+whose elements all carry content-descriptions, which is most test fixtures and
+few real apps.
+
+### The fix
+
+Emit **complete `{by, value}` objects** taken from the tree, so `target` expands
+only to selectors already known to resolve:
+
+```gbnf
+target ::= screen-target
+screen-target ::= "{" "\"by\"" ":" "\"content_desc\"" "," "\"value\"" ":" "\"Send\"" "}"
+                | "{" "\"by\"" ":" "\"text\""         "," "\"value\"" ":" "\"Search\"" "}"
+```
+
+`CompactElement` gained `labelBy`, recording which attribute its label came from,
+mirroring `UiNode.label`'s own preference. Elements with no provenance — built
+directly rather than projected from a tree — fall back to the old value-only
+grounding rather than guessing a `by`.
+
+### It is the sixth application of the method
+
+| decision | determined by | the failure it removes |
+|---|---|---|
+| … the five in §3.5 … | | |
+| **which attribute selects an element** | **the tree (E31)** | **a grounded value paired with a `by` that cannot resolve it** |
+
+Which attribute identifies an element is a fact about the tree, available
+exactly, requiring no judgement. The model should never have been choosing it.
+Removing the choice removes a failure it was measurably making — and the model's
+output gets *smaller*, since `by` is no longer generated at all.
+
+### Two things this cost, both worth recording
+
+**The first attempt produced unparseable GBNF.** Formatting the alternation
+across lines is natural to read and llama.cpp rejects it — a continuation
+beginning with `|` on a new line is read as a new rule, failing with
+`expecting name`. Caught by `tools/check-grammar.sh`, which runs llama.cpp's own
+parser. This is D9's failure mode and the reason that script exists: a grammar
+that fails to parse is **not an error at run time** — the sampler is simply not
+installed and generation proceeds unconstrained, so C3 goes silently absent.
+
+**One existing test was passing vacuously.** `the alternation is capped` located
+the alternation with `substringAfter("screen-label ::=")`, and `substringAfter`
+returns *the whole input* when the delimiter is missing. Renaming the production
+would have left it splitting the grammar's first line, counting one alternative,
+and declaring the cap respected. It now fails loudly when the production is
+absent. Second time this session a test has been green for the wrong reason
+(cf. E22c), and both were found by changing the code underneath rather than by
+reading the test.
+
+### Not yet measured
+
+The defect cost one planning step (~84 s) in the one run where it was observed;
+**no claim is made about how often it fires.** That needs the ablation corpus,
+and it is screen-dependent by construction — a UI whose elements all carry
+content-descriptions would never trigger it. Whether E24e's specific run would
+now proceed further is also unmeasured: the fix removes one wrong turn, and the
+missing success oracle that made the run pointless (E24c) is untouched.
+
+---
+
 ## Open measurements
 
 Required before publication. Listed here so gaps are visible rather than

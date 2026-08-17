@@ -97,6 +97,34 @@ data class CompactElement(
     val index: Int,
     val role: String,
     val label: String?,
+
+    /**
+     * Which attribute [label] came from — **E24e/E31**.
+     *
+     * [UiNode.label] is `contentDescription ?: text`, so a label alone does not
+     * say how to select the element it names. That distinction was dropped in
+     * this projection, and dropping it broke a guarantee two layers up: the
+     * screen grammar (E18) grounds a target's *value* in the labels on screen
+     * while leaving `by` free, so the planner could emit a value that was
+     * genuinely present paired with a `by` that could not resolve it.
+     *
+     * Observed on device (E24e): the planner proposed
+     * `tap content_desc="Search"` against a screen whose "Search" element
+     * carried only `text`. The gate refused it and reported
+     *
+     * > *no element matching content_desc="Search" exists on this screen;
+     * > this screen has: Search*
+     *
+     * — both halves true, which is what made it worth chasing. Cost: one
+     * planning step, ~84 s on this hardware, and a self-contradictory failure
+     * reason handed back to the planner to reason from.
+     *
+     * `null` means the provenance is unknown (an element constructed directly
+     * rather than projected from a tree); consumers fall back to the older,
+     * weaker grounding rather than guessing.
+     */
+    val labelBy: TargetBy? = null,
+
     val editable: Boolean = false,
     val scrollable: Boolean = false,
     val checked: Boolean? = null,
@@ -118,6 +146,15 @@ data class CompactElement(
             index = node.index,
             role = node.role,
             label = node.label,
+            // Mirrors `UiNode.label`'s own preference exactly. The two must
+            // agree: this records where that property took the label from, and
+            // if it ever disagreed the grammar would ground targets on a
+            // selector that does not resolve — which is the E24e bug, restored.
+            labelBy = when {
+                !node.contentDescription.isNullOrBlank() -> TargetBy.CONTENT_DESC
+                !node.text.isNullOrBlank() -> TargetBy.TEXT
+                else -> null
+            },
             editable = node.editable,
             scrollable = node.scrollable,
             checked = node.checked,

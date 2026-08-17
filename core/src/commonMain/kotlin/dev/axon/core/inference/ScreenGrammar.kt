@@ -77,6 +77,72 @@ public object ScreenGrammar {
      * only way out and must stay available.
      */
     public fun forScreen(state: CompactState): Gbnf {
+        // Whole selectors, not labels — E31.
+        //
+        // Grounding only `value` and leaving `by` free let the planner pair a
+        // label that really is on screen with a `by` that cannot resolve it,
+        // and the gate then rejected a legitimate action (E24e). Emitting the
+        // complete `{by, value}` object closes that: every target the sampler
+        // can reach is one the gate has already been shown how to resolve.
+        //
+        // It is also the sixth application of the project's own rule. *Which*
+        // attribute selects an element is a fact about the tree, available
+        // exactly, with no judgement required — so the model should never have
+        // been choosing it. Removing that choice removes a failure it was
+        // measurably making.
+        val selectors = state.elements
+            .mapNotNull { element ->
+                val label = element.label?.trim() ?: return@mapNotNull null
+                if (label.isEmpty() || label.length > MAX_LABEL_LENGTH) return@mapNotNull null
+                // Provenance unknown — an element built directly rather than
+                // projected from a tree. Fall back to the weaker grounding
+                // rather than guessing a `by` that may not resolve.
+                val by = element.labelBy ?: return@mapNotNull null
+                by.wire to label
+            }
+            .distinct()
+            .take(MAX_LABELS)
+
+        if (selectors.isEmpty()) return legacyForScreen(state)
+
+        // One line, deliberately. llama.cpp's GBNF parser expects a rule's
+        // alternation to be a single logical line: a continuation beginning with
+        // `|` on the next line is read as the start of a new rule, and the parse
+        // fails with "expecting name". Found by `tools/check-grammar.sh`, which
+        // is exactly why that script runs the real parser rather than trusting
+        // that generated GBNF is well-formed because it looks it.
+        val alternation = selectors.joinToString(" | ") { (by, label) ->
+            "\"{\" \"\\\"by\\\"\" \":\" \"\\\"$by\\\"\" \",\" \"\\\"value\\\"\" \":\" \"\\\"${escape(label)}\\\"\" \"}\""
+        }
+
+        // Replaces the whole `target` production, not just its value string. The
+        // `expect.value` and `input_text.text` strings stay free: a
+        // post-condition may legitimately mention text that is not on screen yet
+        // — that is the entire point of a post-condition — and typed text is
+        // arbitrary by definition.
+        val specialised = ActionGrammar.SOURCE
+            .replace(
+                "target   ::= (\n  \"{\" \"\\\"by\\\"\" \":\" by\n  \",\" \"\\\"value\\\"\" \":\" string \"}\"\n)",
+                "target   ::= screen-target",
+            )
+            .plus("\n\n# --- screen-grounded selectors (rebuilt every step) ---\n")
+            .plus("# Complete {by, value} pairs taken from the current screen, so a\n")
+            .plus("# target that cannot resolve has no token path (see ScreenGrammar).\n")
+            .plus("screen-target ::= $alternation\n")
+
+        return Gbnf(specialised)
+    }
+
+    /**
+     * The pre-E31 grounding: values restricted, `by` free.
+     *
+     * Kept for states whose elements carry no label provenance — chiefly ones
+     * constructed directly in tests rather than projected from a tree. Weaker,
+     * because it permits a resolvable value paired with an unresolvable `by`,
+     * but strictly better than no grounding at all, and dropping to the base
+     * grammar here would silently disable E18 for those callers.
+     */
+    private fun legacyForScreen(state: CompactState): Gbnf {
         val labels = state.elements
             .mapNotNull { it.label }
             .map { it.trim() }
@@ -88,11 +154,6 @@ public object ScreenGrammar {
 
         val alternation = labels.joinToString(" | ") { "\"\\\"${escape(it)}\\\"\"" }
 
-        // Only the `string` production used by target.value is replaced. The
-        // `expect.value` and `input_text.text` strings stay free: a
-        // post-condition may legitimately mention text that is not on screen yet
-        // — that is the entire point of a post-condition — and typed text is
-        // arbitrary by definition.
         val specialised = ActionGrammar.SOURCE
             .replace(
                 "target   ::= (\n  \"{\" \"\\\"by\\\"\" \":\" by\n  \",\" \"\\\"value\\\"\" \":\" string \"}\"\n)",
@@ -134,9 +195,17 @@ public object ScreenGrammar {
         },
     )
 
-    /** Did specialisation actually apply, or did it fall back to the base grammar? */
+    /**
+     * Did specialisation actually apply, or did it fall back to the base grammar?
+     *
+     * Accepts either production. `screen-target` is E31's grounded `{by, value}`
+     * pair; `screen-label` is the older value-only grounding, still emitted for
+     * states whose elements carry no label provenance. Both are specialisations,
+     * and a caller asking this question wants to know whether the screen
+     * constrained the sampler at all — not which of the two forms it used.
+     */
     public fun isSpecialised(grammar: Gbnf): Boolean =
-        "screen-label ::=" in grammar.source
+        "screen-target ::=" in grammar.source || "screen-label ::=" in grammar.source
 
     /**
      * Escape a label for use as a GBNF string literal.

@@ -1,0 +1,73 @@
+{
+  "buildFiles": [
+    "/home/profostropher/Documents/fyp/axon/android/inference/src/main/cpp/CMakeLists.txt",
+    "/home/profostropher/Documents/fyp/axon/third_party/llama.cpp/CMakeLists.txt",
+    "/home/profostropher/Documents/fyp/axon/third_party/llama.cpp/ggml/CMakeLists.txt",
+    "/home/profostropher/Documents/fyp/axon/third_party/llama.cpp/ggml/src/CMakeLists.txt",
+    "/home/profostropher/Documents/fyp/axon/third_party/llama.cpp/ggml/src/ggml-cpu/CMakeLists.txt",
+    "/home/profostropher/Documents/fyp/axon/third_party/llama.cpp/src/CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "/home/profostropher/Android/Sdk/cmake/3.22.1/bin/ninja",
+      "-C",
+      "/home/profostropher/Documents/fyp/axon/android/inference/.cxx/RelWithDebInfo/5492n506/arm64-v8a",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "/home/profostropher/Android/Sdk/cmake/3.22.1/bin/ninja",
+    "-C",
+    "/home/profostropher/Documents/fyp/axon/android/inference/.cxx/RelWithDebInfo/5492n506/arm64-v8a",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "ggml-base::@94de48a0d5830e0c5d2f": {
+      "artifactName": "ggml-base",
+      "abi": "arm64-v8a",
+      "output": "/home/profostropher/Documents/fyp/axon/android/inference/.cxx/RelWithDebInfo/5492n506/arm64-v8a/bin/libggml-base.so",
+      "runtimeFiles": [
+        "/home/profostropher/Android/Sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/lib/clang/19/lib/linux/aarch64/libomp.so"
+      ]
+    },
+    "axon_llama::@6890427a1f51a3e7e1df": {
+      "artifactName": "axon_llama",
+      "abi": "arm64-v8a",
+      "output": "/home/profostropher/Documents/fyp/axon/android/inference/build/intermediates/cxx/RelWithDebInfo/5492n506/obj/arm64-v8a/libaxon_llama.so",
+      "runtimeFiles": [
+        "/home/profostropher/Documents/fyp/axon/android/inference/.cxx/RelWithDebInfo/5492n506/arm64-v8a/bin/libllama.so",
+        "/home/profostropher/Documents/fyp/axon/android/inference/.cxx/RelWithDebInfo/5492n506/arm64-v8a/bin/libggml.so",
+        "/home/profostropher/Documents/fyp/axon/android/inference/.cxx/RelWithDebInfo/5492n506/arm64-v8a/bin/libggml-cpu.so",
+        "/home/profostropher/Documents/fyp/axon/android/inference/.cxx/RelWithDebInfo/5492n506/arm64-v8a/bin/libggml-base.so"
+      ]
+    },
+    "ggml::@94de48a0d5830e0c5d2f": {
+      "artifactName": "ggml",
+      "abi": "arm64-v8a",
+      "output": "/home/profostropher/Documents/fyp/axon/android/inference/.cxx/RelWithDebInfo/5492n506/arm64-v8a/bin/libggml.so",
+      "runtimeFiles": [
+        "/home/profostropher/Documents/fyp/axon/android/inference/.cxx/RelWithDebInfo/5492n506/arm64-v8a/bin/libggml-cpu.so",
+        "/home/profostropher/Documents/fyp/axon/android/inference/.cxx/RelWithDebInfo/5492n506/arm64-v8a/bin/libggml-base.so"
+      ]
+    },
+    "llama::@fb8c1886b26de7beabc1": {
+      "artifactName": "llama",
+      "abi": "arm64-v8a",
+      "output": "/home/profostropher/Documents/fyp/axon/android/inference/.cxx/RelWithDebInfo/5492n506/arm64-v8a/bin/libllama.so",
+      "runtimeFiles": [
+        "/home/profostropher/Documents/fyp/axon/android/inference/.cxx/RelWithDebInfo/5492n506/arm64-v8a/bin/libggml.so",
+        "/home/profostropher/Documents/fyp/axon/android/inference/.cxx/RelWithDebInfo/5492n506/arm64-v8a/bin/libggml-cpu.so",
+        "/home/profostropher/Documents/fyp/axon/android/inference/.cxx/RelWithDebInfo/5492n506/arm64-v8a/bin/libggml-base.so"
+      ]
+    },
+    "ggml-cpu::@94de48a0d5830e0c5d2f": {
+      "artifactName": "ggml-cpu",
+      "abi": "arm64-v8a",
+      "output": "/home/profostropher/Documents/fyp/axon/android/inference/.cxx/RelWithDebInfo/5492n506/arm64-v8a/bin/libggml-cpu.so",
+      "runtimeFiles": [
+        "/home/profostropher/Documents/fyp/axon/android/inference/.cxx/RelWithDebInfo/5492n506/arm64-v8a/bin/libggml-base.so",
+        "/home/profostropher/Android/Sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/lib/clang/19/lib/linux/aarch64/libomp.so"
+      ]
+    }
+  }
+}

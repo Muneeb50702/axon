@@ -1,0 +1,20 @@
+                        -H/home/profostropher/Documents/fyp/axon/android/inference/src/main/cpp
+-DCMAKE_SYSTEM_NAME=Android
+-DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+-DCMAKE_SYSTEM_VERSION=26
+-DANDROID_ABI=arm64-v8a
+-DCMAKE_ANDROID_ARCH_ABI=arm64-v8a
+-DANDROID_NDK=/home/profostropher/Android/Sdk/ndk/28.2.13676358
+-DCMAKE_ANDROID_NDK=/home/profostropher/Android/Sdk/ndk/28.2.13676358
+-DCMAKE_TOOLCHAIN_FILE=/home/profostropher/Android/Sdk/ndk/28.2.13676358/build/cmake/android.toolchain.cmake
+-DCMAKE_MAKE_PROGRAM=/home/profostropher/Android/Sdk/cmake/3.22.1/bin/ninja
+-DCMAKE_CXX_FLAGS=-O3
+-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=/home/profostropher/Documents/fyp/axon/android/inference/build/intermediates/cxx/RelWithDebInfo/5492n506/obj/arm64-v8a
+-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=/home/profostropher/Documents/fyp/axon/android/inference/build/intermediates/cxx/RelWithDebInfo/5492n506/obj/arm64-v8a
+-DCMAKE_BUILD_TYPE=RelWithDebInfo
+-B/home/profostropher/Documents/fyp/axon/android/inference/.cxx/RelWithDebInfo/5492n506/arm64-v8a
+-GNinja
+-DANDROID_PLATFORM=android-26
+-DAXON_VULKAN=OFF
+                        Build command args: []
+                        Version: 2

@@ -30,6 +30,26 @@ class ScreenGrammarTest {
         ),
     )
 
+    /**
+     * The right-hand side of whichever screen production this grammar carries.
+     *
+     * Two exist since E31: `screen-target`, the grounded `{by, value}` pair, and
+     * `screen-label`, the older value-only form kept for states with no label
+     * provenance. Tests about *the alternation* should not care which.
+     *
+     * Fails loudly when neither is present. `substringAfter` returns the whole
+     * input when the delimiter is missing, so the previous spelling of this made
+     * `the alternation is capped` pass **vacuously** the moment the production
+     * was renamed — it split the grammar's first line on `|`, got 1, and
+     * declared the cap respected.
+     */
+    private fun alternation(g: Gbnf): String {
+        val marker = listOf("screen-target ::=", "screen-label ::=")
+            .firstOrNull { it in g.source }
+            ?: error("grammar carries neither screen production:\n${g.source.takeLast(300)}")
+        return g.source.substringAfter(marker).substringBefore('\n')
+    }
+
     @Test
     fun `labels on screen become selectable`() {
         val g = ScreenGrammar.forScreen(state("Send", "Attach", "Camera"))
@@ -60,8 +80,11 @@ class ScreenGrammarTest {
         // selector is constrained.
         val g = ScreenGrammar.forScreen(state("Send"))
 
-        val targetRule = g.source.lineSequence().first { it.trimStart().startsWith("\",\" \"\\\"value\\\"\"") || it.contains("screen-label \"}\"") }
-        assertTrue("screen-label" in targetRule, "target.value should use the screen alternation")
+        val targetRule = g.source.lineSequence().first { it.startsWith("target   ::=") }
+        assertTrue(
+            "screen-target" in targetRule || "screen-label" in targetRule,
+            "target should use the screen alternation; got: $targetRule",
+        )
 
         val expectRule = g.source.substringAfter("expect   ::=").substringBefore(")")
         assertTrue("string" in expectRule, "expect.value must remain a free string")
@@ -89,40 +112,62 @@ class ScreenGrammarTest {
         val g = ScreenGrammar.forScreen(state("""Say "hi"""", """back\slash""", "multi\nline"))
 
         assertTrue(ScreenGrammar.isSpecialised(g))
-        val rule = g.source.substringAfter("screen-label ::=").substringBefore('\n')
+        val rule = alternation(g)
         assertFalse('\n' in rule, "a newline leaked into the alternation")
 
-        // Each alternative is a GBNF string literal delimited by unescaped
-        // quotes. A label's own quote left unescaped would terminate the literal
-        // early, and the resulting parse failure is not an error — llama.cpp
-        // simply declines to install the sampler and generation runs
-        // unconstrained.
+        // Since E31 each alternative is a *sequence* of GBNF string literals —
+        // `"{" "\"by\"" ":" "\"content_desc\"" "," "\"value\"" ":" "\"Send\"" "}"`
+        // — nine of them, of which the eighth carries the label.
+        //
+        // A label's own quote left unescaped would close its literal early and
+        // desynchronise every boundary after it, so the count stops being nine.
+        // That is the sharpest available signal at unit-test level, and it
+        // matters because the resulting parse failure is *not* an error at run
+        // time: llama.cpp declines to install the sampler and generation
+        // proceeds unconstrained, i.e. C3 silently absent.
         for (alternative in rule.split('|').map { it.trim() }.filter { it.isNotEmpty() }) {
-            assertTrue(
-                alternative.startsWith('"') && alternative.endsWith('"'),
-                "alternative is not a delimited literal: $alternative",
-            )
-            val body = alternative.substring(1, alternative.length - 1)
+            val literals = gbnfLiterals(alternative)
             assertEquals(
-                0,
-                countUnescapedQuotes(body),
-                "unescaped quote would terminate the literal early: $alternative",
+                9, literals.size,
+                "expected nine literals in a grounded selector; a label's quote " +
+                    "probably closed its literal early: $alternative",
+            )
+            assertTrue(
+                literals[3] == """\"content_desc\"""" || literals[3] == """\"text\"""",
+                "the `by` literal should be a wire name, got: ${literals[3]}",
             )
         }
     }
 
-    /** Quotes in [body] not preceded by a backslash — each would end the literal. */
-    private fun countUnescapedQuotes(body: String): Int {
-        var count = 0
+    /**
+     * The bodies of the double-quoted literals in [sequence], in order.
+     *
+     * A quote preceded by a backslash is part of the literal, not a delimiter —
+     * which is the whole property under test, so this scanner has to honour it
+     * rather than splitting on `"`.
+     */
+    private fun gbnfLiterals(sequence: String): List<String> {
+        val literals = mutableListOf<String>()
+        val current = StringBuilder()
+        var inside = false
         var i = 0
-        while (i < body.length) {
+        while (i < sequence.length) {
+            val c = sequence[i]
             when {
-                body[i] == '\\' -> i++          // skip whatever this escapes
-                body[i] == '"' -> count++
+                c == '\\' && i + 1 < sequence.length -> {
+                    if (inside) current.append(c).append(sequence[i + 1])
+                    i++
+                }
+                c == '"' -> {
+                    if (inside) { literals += current.toString(); current.clear() }
+                    inside = !inside
+                }
+                inside -> current.append(c)
             }
             i++
         }
-        return count
+        assertFalse(inside, "unterminated literal in: $sequence")
+        return literals
     }
 
     @Test
@@ -135,12 +180,9 @@ class ScreenGrammarTest {
         val many = (1..80).map { "Item $it" }.toTypedArray()
         val g = ScreenGrammar.forScreen(state(*many))
 
-        val alternatives = g.source
-            .substringAfter("screen-label ::=")
-            .substringBefore('\n')
-            .split('|')
-            .size
+        val alternatives = alternation(g).split('|').size
 
+        assertTrue(alternatives > 1, "the alternation was not found — this test would pass vacuously")
         assertTrue(alternatives <= ScreenGrammar.MAX_LABELS, "alternation not capped: $alternatives")
         assertEquals(ScreenGrammar.MAX_LABELS, CompactState.MAX_NODES)
     }
