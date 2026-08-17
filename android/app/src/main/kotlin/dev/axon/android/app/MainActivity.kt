@@ -44,6 +44,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import dev.axon.core.model.CompiledSkill
 import dev.axon.core.model.DeviceAction
 import dev.axon.core.model.PostCondition
 import dev.axon.core.model.PostConditionType
@@ -398,6 +399,59 @@ private fun AxonApp(controller: AgentController, agent: AxonAgent) {
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+
+                    // ---- §16: what AXON has learned, and unlearning it ----
+                    //
+                    // A system that changes its own behaviour over time owes the
+                    // user a way to see what it learned and to take it back. A
+                    // learned skill is a capability the user never explicitly
+                    // granted — it accumulated — which makes revocability more
+                    // important here than for a permission they did grant.
+                    if (agentState.skillCount > 0) {
+                        Spacer(Modifier.height(20.dp))
+                        var skills by remember { mutableStateOf<List<CompiledSkill>>(emptyList()) }
+                        var skillsShown by remember { mutableStateOf(false) }
+
+                        OutlinedButton(
+                            onClick = {
+                                scope.launch {
+                                    skills = agent.learnedSkills()
+                                    skillsShown = true
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("What has AXON learned?") }
+
+                        if (skillsShown) {
+                            skills.forEach { skill ->
+                                Row(
+                                    Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            skill.manifest.goalPattern,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                        )
+                                        Text(
+                                            "replayed ${skill.replayCount}× · " +
+                                                "${skill.steps.size} step(s)" +
+                                                if (!skill.isHealthy) " · retired (drifted)" else "",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                    OutlinedButton(onClick = {
+                                        scope.launch {
+                                            agent.forgetSkill(skill.manifest.id)
+                                            skills = agent.learnedSkills()
+                                        }
+                                    }) { Text("Forget") }
+                                }
+                            }
+                        }
+                    }
 
                     // ---- §16 audit log ---------------------------------
                     //

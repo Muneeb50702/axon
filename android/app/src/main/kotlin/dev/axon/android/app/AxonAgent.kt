@@ -371,6 +371,35 @@ class AxonAgent(private val context: Context) {
     }
 
     /**
+     * What AXON has learned, so the user can look at it (§16).
+     *
+     * A system that changes its own behaviour over time owes the user a way to
+     * see what it has learned — otherwise "it gets faster the more you use it"
+     * is indistinguishable, from the outside, from "it does something different
+     * now and will not say what".
+     */
+    suspend fun learnedSkills() = withContext(Dispatchers.IO) {
+        runCatching { skills.all() }.getOrDefault(emptyList())
+    }
+
+    /**
+     * Make AXON unlearn a task (§16 revocability).
+     *
+     * `SqlSkillStore.forget` existed and nothing called it. §16 requires
+     * capabilities be revocable, and a *learned behaviour* is a capability the
+     * user never explicitly granted in the first place — it accumulated. That
+     * makes being able to remove it more important, not less.
+     *
+     * Distinct from erasing history. "Stop doing this automatically" and "delete
+     * my records" are different requests, and conflating them would mean a user
+     * tidying their log silently loses everything AXON knows.
+     */
+    suspend fun forgetSkill(id: String) = withContext(Dispatchers.IO) {
+        runCatching { skills.forget(id) }
+        refreshLearned()
+    }
+
+    /**
      * Every action AXON has ever taken, newest first (§16).
      *
      * The audit log is a promise the project makes in its README and its safety
