@@ -9,7 +9,9 @@ import dev.axon.core.model.Goal
 import dev.axon.core.model.TaskOutcome
 import dev.axon.core.model.TaskResult
 import dev.axon.core.planner.Planner
+import dev.axon.core.skills.ComposedPlan
 import dev.axon.core.skills.CompileResult
+import dev.axon.core.skills.SkillComposer
 import dev.axon.core.skills.SkillCompiler
 import dev.axon.core.skills.SkillReplayer
 import dev.axon.core.skills.SkillStore
@@ -81,18 +83,34 @@ public class AxonRuntime(
      *   calls by path — the number that makes C1′ a measurement.
      */
     public suspend fun execute(goal: Goal): RunOutcome {
-        // ---- REPLAY, if a skill matches -------------------------------------
-        skills.match(goal)?.let { match ->
-            val replayer = SkillReplayer(
-                driver = driver,
-                executor = executor,
-                nowMs = nowMs,
-                // The planner is available for per-step repair, but only for
-                // steps whose llm_fallback allows it. A clean replay never
-                // touches it.
-                planner = planner,
-            )
+        val replayer = SkillReplayer(
+            driver = driver,
+            executor = executor,
+            nowMs = nowMs,
+            // The planner is available for per-step repair, but only for steps
+            // whose llm_fallback allows it. A clean replay never touches it.
+            planner = planner,
+        )
 
+        // ---- COMPOSE, if every part of a compound goal is already known ------
+        //
+        // Tried before the single-skill match because a compound goal will not
+        // match one skill anyway, and after it would mean planning the whole
+        // thing first. E24: nine steps of cold planning is ~9 minutes on this
+        // hardware — past the ~7-minute ceiling the OEM power manager allows
+        // (E6) — so a compound task is not slow here, it is impossible. Composed
+        // from known skills it costs milliseconds.
+        SkillComposer(skills).plan(goal)?.let { composed ->
+            val outcome = runComposed(composed, replayer)
+            if (outcome != null) return outcome
+            // A composed run that failed part-way falls through to the planner
+            // with the *original* goal, for the same reason a failed single
+            // replay does: the skills were compiled against a UI that has since
+            // changed, and the planner can still do the task, slowly.
+        }
+
+        // ---- REPLAY, if a skill matches --------------------------------------
+        skills.match(goal)?.let { match ->
             val replay = replayer.replay(match.skill, goal, match.params)
             skills.recordReplay(match.skill.manifest.id, replay.repairedSteps > 0)
 
@@ -135,6 +153,69 @@ public class AxonRuntime(
         }
 
         return RunOutcome(result, ExecutionPath.PLAN, compiled)
+    }
+
+    /**
+     * Replay a composed plan, or `null` if any part of it failed (E24).
+     *
+     * Steps run in the order the user said them and **stop at the first
+     * failure**. A compound request is a sequence, not a set: "turn on wifi then
+     * message Ammi" with the Wi-Fi step failed means the message would be sent
+     * over a connection the user asked to have working. Carrying on would
+     * substitute AXON's judgement about which parts matter for the user's, which
+     * is the whole thing this project declines to do.
+     *
+     * The composed result is reported as one task, with the steps of every part
+     * concatenated. That keeps §14.2's metrics meaningful — a composed run of
+     * two three-step skills is a six-step task, not two tasks — and it keeps the
+     * §16 audit log reading the way the user experienced it: one request, one
+     * record.
+     */
+    private suspend fun runComposed(
+        plan: ComposedPlan,
+        replayer: SkillReplayer,
+    ): RunOutcome? {
+        val steps = mutableListOf<dev.axon.core.model.StepOutcome>()
+        var totalMs = 0L
+        var repaired = 0
+        var llmCalls = 0
+
+        for (part in plan.steps) {
+            val replay = replayer.replay(part.match.skill, part.goal, part.match.params)
+            skills.recordReplay(part.match.skill.manifest.id, replay.repairedSteps > 0)
+
+            steps += replay.result.steps
+            totalMs += replay.result.totalMs
+            repaired += replay.repairedSteps
+            // Summed from each part's own result rather than from its steps:
+            // StepOutcome does not carry a call count, and inferring one from
+            // step kinds would be a second, guessable definition of the number
+            // C1′ rests on.
+            llmCalls += replay.result.llmCalls
+
+            // Stop at the first failure. The caller falls back to planning the
+            // *original* goal, which re-does the parts that already succeeded —
+            // wasteful, and correct: a partially-applied compound task is a
+            // state the planner should be allowed to observe and finish from,
+            // not one this method should try to repair by guessing.
+            if (replay.result.outcome != TaskOutcome.SUCCESS) return null
+        }
+
+        return RunOutcome(
+            result = dev.axon.core.model.TaskResult(
+                goal = plan.goal,
+                steps = steps,
+                outcome = TaskOutcome.SUCCESS,
+                // The C1′ number, and it must stay honest: a composed run costs
+                // whatever its parts cost, which is zero unless a step needed
+                // repair.
+                llmCalls = llmCalls,
+                totalMs = totalMs,
+                servedBySkill = plan.steps.joinToString("+") { it.match.skill.manifest.id },
+            ),
+            path = if (repaired > 0) ExecutionPath.REPLAY_WITH_REPAIR else ExecutionPath.REPLAY,
+            compiled = null,
+        )
     }
 
     /**

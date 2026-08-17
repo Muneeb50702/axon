@@ -1039,6 +1039,82 @@ already existed.
   these are upper bounds on AXON's cost, not measurements of it.
 - n = 1 per phrasing.
 
+---
+
+## E24 — Composing known skills for compound goals
+
+*2026-08-17 · implemented and unit-tested (11 tests) · **NOT YET MEASURED ON
+DEVICE***
+
+That status line is the point. E21c is why this file now says so explicitly: a
+mechanism that passed every unit test was switched off entirely on hardware by
+Android's package-visibility filtering, and nothing anywhere reported it. Until
+E24 runs on the phone, the claim below is a design, not a result.
+
+### The gap
+
+"Turn on wifi then open whatsapp" matches no single skill, so it cold-plans every
+step — even when both halves are already compiled.
+
+On this hardware that is not inefficiency, it is a wall. At ~60 s per planning
+step (E2), the corpus's long-horizon tier (8–11 optimal steps, §14.1) costs 8–11
+minutes, and the OEM power manager SIGKILLs sustained foreground compute after
+about **seven** (E6). **Several long-horizon tasks are not completable by the
+PLAN path on this device at all.** Composed from known skills they cost
+milliseconds.
+
+That makes composition the sharpest available statement of C1′: skill reuse is
+not making a slow task faster, it is making an impossible task possible.
+
+### The fifth application of one idea
+
+| decision | determined by | instead of |
+|---|---|---|
+| what shape an action may take | GBNF grammar (C3) | the model getting JSON right |
+| which elements may be named | the live UI tree | the model recalling the screen |
+| which app "open X" means | package lookup (E21) | the model picking an icon |
+| when a launch goal is finished | foreground package (E21b) | the model self-assessing |
+| **where one task ends and the next begins** | **sequencing words (E24)** | **the model planning across both** |
+
+"Then", "and", "phir", "aur" are syntax. Seeing them needs no model, and asking
+one costs ~60 s and may be wrong.
+
+### Splitting is aggressive; composing refuses
+
+`GoalDecomposer` over-splits on purpose. "Send a message to Ali and Ahmed" is one
+task and splits into `["send a message to ali", "ahmed"]`.
+
+Teaching a heuristic to recognise that would be semantics again, and wrong at 1B.
+Instead the safety sits one level up: **a compound goal composes only if every
+fragment matches a compiled skill.** "ahmed" matches nothing, so the composition
+is abandoned *before anything is dispatched* and the planner receives the
+original sentence intact.
+
+Partial composition was considered and rejected. It would have messaged Ali and
+then planned something for "ahmed" — performing an irreversible act the user
+never asked for as a separate step. A wrong split now costs a missed opportunity;
+it can never cost an action. Same asymmetry as every threshold in `GoalMatcher`.
+
+A composed run also **stops at the first failed part** and falls back to planning
+the whole original goal. Continuing would substitute AXON's judgement about which
+parts of a request matter.
+
+### What composition is not
+
+Not a new skill. It is a routing decision made per request and never stored — so
+it cannot rot, cannot be replayed wrongly later, and needs no compilation gate.
+A compound goal asked often enough gets compiled from its own traces by the
+ordinary two-clean-runs path.
+
+### To measure (E24b)
+
+- Two compiled skills on device, then a compound goal naming both. Expect **0
+  model calls** and a trace count that does not increase.
+- The long-horizon tier with and without composition — the number that turns this
+  from a feature into evidence for C1′.
+- Whether the decomposer's over-splitting produces false composition in a store
+  with many skills. The unit tests cover the obvious cases, not a population.
+
 ## Open measurements
 
 Required before publication. Listed here so gaps are visible rather than
@@ -1065,3 +1141,4 @@ discovered late.
 | E22e | Hydrate cost with a realistic skill count (hundreds, not one) | needs a populated store |
 | E21d | Does the launch oracle generalise past app-launch goals? | Phase 7 |
 | E23b | False-match rate for canonicalisation across many launch skills | needs a populated store |
+| E24b | Composition on device: compound goal, two skills, 0 model calls | needs device |
