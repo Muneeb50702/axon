@@ -257,6 +257,16 @@ thermal throttling needs `meminfo` sampled per chunk, which this harness does no
 do. Recorded because the pattern is too regular to omit, and labelled because it
 is not yet explained.
 
+> **Update — E6b settles this.** Sampling AXON's footprint against system memory
+> through a full planning run confirms the memory mechanism and rules thermal
+> out: the process is **`SIGKILL`ed by `system_server`**, and thermal management
+> throttles rather than kills. The device reaps processes in *batches* — seven in
+> five seconds in one observed sweep — so whether a given chunk survives depends
+> on whether a sweep lands during it. That stochastic-sweep model fits an
+> approximately-alternating pattern; a fixed time or thermal ceiling does not.
+> The hypothesis above is retained as written, because what it *predicted* is
+> part of the record, but it is no longer open.
+
 Coverage is stated rather than rounded away: **the corpus has 24 screens and this
 result covers 15.** The nine absent cases are not a sample — they are the tail of
 each killed chunk, so they are the *later* screens in corpus order, and any claim
@@ -1543,6 +1553,277 @@ That ratio is the finding worth reporting. It says something uncomfortable about
 safety sections generally: the claims are written once, early, and nothing
 afterwards re-checks them.
 
+## E24d — The same bug as E22d, on the path E22d did not cover
+
+*2026-08-17 · TECNO Camon 20 · found by E24c's **control** run, not by E24c*
+
+### What happened
+
+E24c needed a warm control — the composed run, measured today rather than
+compared against E24b from four hours earlier. It produced the expected result
+and one line that should not have been there:
+
+```
+18:17:46.414  request received
+18:17:47.923  load_tensors: loading model tensors…      ← should not happen
+18:17:50.752  loaded model: gemma-3-1b-it-Q4_K_M.gguf
+18:17:50.777  run 'open whatsapp then go to linkedin' under config D
+18:17:54.763  APP_START_OCCURRED com.linkedin.android  callerPackage:dev.axon.android
+```
+
+| | |
+|---|---|
+| end to end | **8.35 s** |
+| model load | **4.36 s** (52%) |
+| composed execution | 3.99 s |
+| **model calls** | **0** |
+
+Both skill counters advanced (`open_whatsapp` 9→10, `go_to_linkedin` 2→3) and the
+trace count did not move, so the run was served entirely from compiled skills.
+More than half the user's wait was spent loading a model that was never consulted.
+
+### Why it was there
+
+E22d established the fix: ask the skill store *before* paying for the GGUF. The
+gateway asks `skills.match(goal)`.
+
+A compound goal **never matches a single skill — by construction.** That is the
+entire reason `SkillComposer` exists. So `match()` returned null, the gateway
+concluded the model was needed, and the runtime then composed the task for free.
+
+The same bug, in the same function, one phase apart. Not because either fix was
+careless: the shortcut and the runtime encode the *same decision* in two places,
+and E24 updated only one of them. Every layer was individually correct
+throughout — the store matched correctly, the composer composed correctly, and
+the gateway's shortcut was correct *for the case it knew about*.
+
+### Where the fix went, and why that matters more than the fix
+
+The predicate now lives in `:core` as `SkillStore.canServeWithoutModel`, with
+`SkillReuseTest` asserting the compound case directly.
+
+It previously lived in `:android:app`, **which has no test suite** — so nothing
+could have caught either regression except running the app and reading a
+timeline, which is exactly how both were in fact found. That is E29's lesson
+restated in a second domain: a mechanism whose correctness cannot be checked
+where it lives will eventually be wrong, and its being wrong will be invisible.
+
+The rule the test now pins down: the question is *"can **any** path serve this
+without the model?"*, and every path that can must be asked.
+
+---
+
+## E24c — The compound goal on the cold path, and what actually stops it
+
+*2026-08-17 · TECNO Camon 20 · battery **16%**, charging · two runs*
+
+The E24 claim was that composition does not make a slow task faster, it makes an
+**impossible** task possible. Until now that word was doing unearned work: E24b
+measured the composed arm and the cold arm had never been run, so "impossible"
+was an inference from E2's per-step latency and E6's termination ceiling.
+
+### Method
+
+The arm is a property of the *request*, not of stored state — `RunConfig.COLD`,
+reachable through the gateway's `config` extra. The two compiled skills stayed
+exactly where they were and one run was told not to consult them.
+
+That matters because the three obvious alternatives are all methodology
+failures, and one of them had already been committed: an earlier attempt swapped
+the database under a live SQLite connection, corrupted the app's state, and had
+to be voided and restored from backup. Deleting the skills would have cost the
+user what the phone spent minutes learning; using a different compound goal would
+have changed two variables at once.
+
+Verified afterwards: skills unchanged (`10`, `3`), so the measurement is
+repeatable rather than self-consuming.
+
+### Results
+
+Two cold runs, same goal, same starting screen (LinkedIn foreground, left by the
+control run), ~5 minutes apart. They failed **in two different ways**, which is
+itself the honest result.
+
+| | composed (control) | cold, run 1 | cold, run 2 |
+|---|---|---|---|
+| outcome | SUCCESS | **`SIGKILL`ed** | **ESCALATED** |
+| wall clock | **8.35 s** | 74.8 s, killed | **276.7 s** |
+| model calls | **0** | never reported | **3** |
+| actions dispatched | 2 launches | **0** | 2 taps |
+| WhatsApp launched | ✔ | ✘ | **✘ — never attempted** |
+| LinkedIn reached | ✔ | ✘ | ✘ |
+| trace recorded | none (clean replay) | none — died first | ESCALATED, not compiled |
+
+Run 1 was terminated by `system_server` during its first planning step, before
+dispatching anything; because the process died before `traces.append`, it left no
+record it had ever run. That failure mode is characterised separately in **E6b**.
+
+### Run 2 is the one that matters
+
+Run 2 survived and finished, so it shows what the cold path actually *does*. Its
+two steps, from the trace:
+
+| step | action | pre | post | latency |
+|---|---|---|---|---|
+| 0 | `tap` content-desc **"View company: LucrumX"** | ✔ | ✘ | 623 ms |
+| 1 | `tap` content-desc **"Back"** → expect "Search" | ✔ | ✘ | 418 ms |
+
+The goal was *"open whatsapp then go to linkedin"*. **The cold path never issued
+a `launch_app` for WhatsApp.** Given LinkedIn's screen it tapped a company link,
+then tapped Back, then escalated.
+
+Of the 276.7 s, the two dispatched actions account for **1.04 s**. The other
+**99.6% was model inference** — three calls at ~92 s each, the prompt inflated by
+LinkedIn's element-dense screen.
+
+So the E24 claim now has a measured form, and it is stronger than a latency
+ratio:
+
+> The composed arm completes the task in 4 s with zero model calls. The cold arm,
+> given 277 s and three model calls, **did not perform a single step of the task
+> it was asked to do.**
+
+That is the difference between *slow* and *cannot*.
+
+### Why it never tried to open WhatsApp
+
+Not model stupidity — a **mechanism it was denied**. E21 collapses the grammar to
+a single `launch_app` when the goal names an app, which is why "open instagram"
+worked on the first attempt. `AppIntent.appName` refuses to fire when the goal
+contains a continuation word ("then", "and", "phir", "aur"), and refuses for good
+reason: without that guard, "open whatsapp and message ammi" would be narrowed to
+a launch and declared complete at step one (E21b).
+
+The consequence is that a compound goal loses **both** guarantees at once:
+
+| | simple goal | compound goal |
+|---|---|---|
+| grammar collapse (E21) | ✔ one action, correct by construction | ✘ full grammar |
+| success oracle (E21b) | ✔ foreground package | ✘ none |
+
+Handed the full grammar on a dense screen, the 1B model produced exactly the
+failure E18b documented: a **structurally valid action naming a real on-screen
+element that has nothing to do with the goal.**
+
+Note `pre = ✔` on both steps. The precondition gate *passed* — these targets
+genuinely were on screen. It was the **verifier** that caught them, and the run
+escalated after two failures instead of spending its six-step budget. Both
+defences behaved exactly as specified:
+
+| defence | verdict | why it did not stop this |
+|---|---|---|
+| grammar (C3) | passed | the actions were well-formed |
+| precondition gate | passed | the targets were really on screen |
+| **verifier (C2)** | **failed → ESCALATED** | the post-conditions did not hold |
+
+This is the clearest evidence yet for why the reliability argument has to be
+architectural. Two of three defences had **nothing to object to**, because
+nothing was malformed and nothing was hallucinated. Only the layer that checks
+*outcomes* could tell that the agent was doing the wrong thing competently.
+
+### What this does *not* establish
+
+- **n = 2, and the two runs disagree.** One was killed, one escalated. The
+  *shared* conclusion — the task was not completed and WhatsApp was never
+  launched — holds in both, but neither number should be quoted as typical.
+- **Battery was 15–16% throughout**, and it *fell* during the run despite being
+  plugged in: sustained 4-thread inference outdraws USB charging. Device state
+  this degraded is a confound on every latency figure here.
+- **The starting screen was LinkedIn**, not a neutral home screen, because the
+  control run left it there. A dense app screen is a harder prompt and plausibly
+  made the wrong tap more likely. Repeating from the launcher would separate
+  "compound goals lose the oracle" from "this particular screen was distracting"
+  — and only the first is a claim about the design.
+
+---
+
+## E6b — What actually terminates a planning run
+
+*2026-08-17 · TECNO Camon 20 · 50 samples at 5 s over two cold runs ·
+artefact: `bench/results/E6b-memory-samples.csv`*
+
+E6 recorded that sustained foreground compute is terminated after "about seven
+minutes" and left the mechanism open. E4b sharpened the pattern — every other
+chunk cut short — and explicitly labelled memory pressure as *a hypothesis, not a
+measurement*, noting that separating it from thermal throttling needed `meminfo`
+sampled through a run. This is that sampling.
+
+### AXON's footprint is the model, and nothing else
+
+| region | PSS | nature |
+|---|---|---|
+| `Other mmap` — the GGUF | **781 MB** | private **clean** → evictable page cache |
+| Native heap — llama.cpp buffers | **239 MB** | **dirty** → not evictable |
+| everything else | 63 MB | |
+| **total while planning** | **1.08 GB** | |
+
+Idle, the same process is **51 MB**. Loading the model is a **21× step change**,
+and it happens in under six seconds.
+
+### The device has no room to give
+
+Measured at idle, before AXON was started at all:
+
+| | |
+|---|---|
+| MemTotal | 7.89 GB |
+| **MemFree** | **138 MB** |
+| MemAvailable | 3.75 GB |
+| SwapTotal / SwapFree | 5.92 GB / 4.28 GB → **1.63 GB already swapped** |
+
+Through the run, `MemAvailable` fell to 3.36 GB and a further **~340 MB was
+pushed to swap**. Battery fell 16% → 15% *while plugged in* — sustained 4-thread
+inference outdraws USB charging. Temperature rose 33.0 °C → 40.0 °C.
+
+### It is a kill, not a throttle — and it comes in batches
+
+```
+run 1   18:20:02.929  Process: Sending signal. PID: 687   SIG: 9   ← AXON
+        18:20:02.931  Process: Sending signal. PID: 26659 SIG: 9   ← +1 ms
+        18:20:04.581  Process: Sending signal. PID: 31713 SIG: 9
+        18:20:23.988  AxonA11y: accessibility service reconnected
+
+run 2   18:27:43.766 … 18:27:48.799   seven processes killed in 5 s
+                                       AXON survived this one
+```
+
+Three facts settle the mechanism:
+
+1. **The signal is `SIGKILL` from `system_server`** — the ActivityManager kill
+   path, not `lmkd`, and emphatically not thermal. Thermal management reduces
+   clocks; it does not kill. At 40 °C the device was warm, not throttling.
+2. **Processes die in sweeps.** Seven in five seconds in one observed instance.
+   AXON was caught in one sweep and survived another.
+3. **Whether a run survives is therefore a matter of overlap**, not duration.
+   Run 1 died at 74.8 s; run 2 ran 276.7 s to completion. Neither is "the
+   ceiling".
+
+### What this changes
+
+**E4b's hypothesis is confirmed, and its framing improved.** The chunk-loss
+pattern is not a fixed time limit that each chunk races. It is a periodic reaper
+meeting a process that is, by a wide margin, the largest memory consumer on the
+device — so an approximately-alternating survival pattern is what a stochastic
+sweep against a constant 1.08 GB tenant looks like. E6's "about seven minutes" is
+best read as *the interval at which sweeps happened to land during that session*,
+not a property of the hardware.
+
+**The deployment lesson (C5).** The binding constraint on this class of device is
+not compute and not battery — it is that a 1B model at Q4 is a **1 GB resident
+tenant on a phone already 1.6 GB into swap**, and the OS reaps such tenants on
+its own schedule with no notification and no appeal. Nothing in the agent's
+design can prevent this; only holding the model for less wall-clock time can. It
+is the sharpest argument the project has for compiled skills, because replay
+never loads the model at all.
+
+**Threats to validity.** n = 2 runs, one device, battery 15–16% throughout — and
+Transsion's power management is known to tighten as charge falls, so the sweep
+frequency here is plausibly worse than at a healthy state of charge. The kill
+policy is not documented by the vendor and is inferred from its behaviour. What
+is *not* in doubt: the signal, the sender, the batching, and the footprint.
+
+---
+
 ## Open measurements
 
 Required before publication. Listed here so gaps are visible rather than
@@ -1569,6 +1850,8 @@ discovered late.
 | E22e | Hydrate cost with a realistic skill count (hundreds, not one) | needs a populated store |
 | E21d | Does the launch oracle generalise past app-launch goals? | Phase 7 |
 | E23b | False-match rate for canonicalisation across many launch skills | needs a populated store |
-| E24c | Compound goal on the PLAN path: does it complete at all? | needs device |
+| E24e | Repeat E24c from the launcher, not a dense app screen, to separate "compound goals lose the oracle" from "that screen was distracting" | needs device |
+| E24f | The cold arm at a healthy state of charge — E24c ran at 15–16% and battery *fell* while plugged in | needs device, charged |
 | E26b | Does selector promotion reduce replay breakage under LAYOUT_VARIANT? | Phase 7 |
 | E27b | Skill-drift rate, and whether retirement thresholds fire correctly | Phase 7 |
+| E30 | The §14.3 **verifier** arm has no device path; grammar and skill-replay now do | needs an executor switch |

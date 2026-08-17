@@ -1,0 +1,31 @@
+{
+  "arms": {
+    "B_grammar": {
+      "n": 15,
+      "valid": 15,
+      "valid_rate": 1.0,
+      "median_latency_ms": 68349,
+      "p90_latency_ms": 73882,
+      "median_prefill_ms": 48562,
+      "median_decode_ms": 17844,
+      "median_grammar_ms": 12221,
+      "mean_prompt_tokens": 784,
+      "mean_output_tokens": 32.5,
+      "truncated": 0
+    },
+    "A_naive": {
+      "n": 15,
+      "valid": 7,
+      "valid_rate": 0.4666666666666667,
+      "median_latency_ms": 54920,
+      "p90_latency_ms": 63472,
+      "median_prefill_ms": 47515,
+      "median_decode_ms": 6202,
+      "median_grammar_ms": 0,
+      "mean_prompt_tokens": 784,
+      "mean_output_tokens": 38.9,
+      "truncated": 0
+    }
+  },
+  "n_records": 30
+}
