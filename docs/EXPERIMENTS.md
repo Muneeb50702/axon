@@ -1239,6 +1239,72 @@ completes in one step, and the two wasted steps are gone with it.
 - **One slow app.** Whether 8 s covers the slowest app on this device is unknown,
   and the honest statement is that it covered the one that exposed the bug.
 
+---
+
+## E26 — Selector robustness: freezing the sturdier handle
+
+*2026-08-17 - implemented, 7 unit tests - **not yet measured on device***
+
+### The no-op that was not neglect
+
+`DefaultSkillCompiler.preferStableSelector` returned its argument unchanged, with
+a comment describing an ordering it did not apply:
+
+| selector | survives |
+|---|---|
+| `id` | most updates; the developer's own stable handle |
+| `content_desc` | most updates; changes with localisation |
+| `text` | visible-copy changes break it |
+| `coord` | almost nothing - rotation, font size, density |
+
+The reason it did nothing is more interesting than the omission: **the compiler
+had nothing better to choose from.** A `TraceStep` carried only the action, so
+the only selector in evidence was the one the model wrote - and the model writes
+what it can see in the prompt, which is the visible text.
+
+Meanwhile the precondition gate had *already resolved* that text to a concrete
+node, and returned it as `GateResult.Allowed(node)`. That node frequently carries
+`com.whatsapp:id/send`: a handle the app's own developer controls, immune to
+translation and copy changes. The executor received it, used it for the §16
+confirmation check, and then dropped it.
+
+### What changed
+
+The resolved node now flows `StepOutcome` -> `TraceStep.resolvedHandles` ->
+SQLite -> compiler. Three fields only - view id, content-description, text -
+because episodic memory grows without bound on a phone and the compiler never
+reads the rest of a node.
+
+Persisted rather than kept in memory, because the compiler reads traces back
+after a restart; dropping them would make promotion work only within the session
+that recorded the trace, which is the exact qualifier §11 exists to remove.
+
+### Two refusals matter more than the promotions
+
+**Never invent a handle.** Only handles observed on the matched node are used, so
+a rewrite can only ever name the same element by a better-attested route. With
+nothing better observed, the model's selector stands - not as a fallback but
+because it is the only handle known to address that element.
+
+**Never promote a parameterised selector.** This one would be a real bug. "Ammi"
+is a *parameter*, substituted from the caller's params at replay. Promoting it to
+the view id observed while messaging Ammi would freeze her contact row into every
+future replay, and the skill would silently only ever message her - precisely the
+macro-versus-skill error §7.7 warns about. A slot-bound selector is left exactly
+as written.
+
+### Status and what it is worth
+
+Implemented and unit-tested; **not yet demonstrated to reduce breakage**, because
+skill drift has never been measured here. §17 frames drift as something to
+recover from and the honest position remains the one in `PHASE5.md`: *we have the
+mechanism, not the numbers.*
+
+The measurement that would settle it (E26b) is a robustness-tier run using the
+`LAYOUT_VARIANT` perturbation the benchmark corpus already contains - the same
+skill replayed against a moved or restyled target, with and without promotion.
+Until then this is a plausible improvement, not a demonstrated one.
+
 ## Open measurements
 
 Required before publication. Listed here so gaps are visible rather than
@@ -1266,3 +1332,4 @@ discovered late.
 | E21d | Does the launch oracle generalise past app-launch goals? | Phase 7 |
 | E23b | False-match rate for canonicalisation across many launch skills | needs a populated store |
 | E24c | Compound goal on the PLAN path: does it complete at all? | needs device |
+| E26b | Does selector promotion reduce replay breakage under LAYOUT_VARIANT? | Phase 7 |

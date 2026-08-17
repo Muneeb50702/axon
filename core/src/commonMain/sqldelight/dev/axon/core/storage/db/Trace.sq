@@ -96,6 +96,19 @@ CREATE TABLE trace_step (
     -- string reconstructed at display time.
     failure_reason TEXT,
 
+    -- The handles the gate's matched node carried (E26). Three columns rather
+    -- than a JSON blob because they are read by the compiler on every compile
+    -- and are a fixed, tiny shape — the argument that made skill bodies a blob
+    -- does not apply to three nullable strings.
+    --
+    -- Persisted at all because the compiler reads traces back from here after a
+    -- restart. Dropping them would make selector promotion work only for skills
+    -- compiled in the session that recorded them, which is exactly the
+    -- within-a-session qualifier §11 exists to remove.
+    resolved_view_id      TEXT,
+    resolved_content_desc TEXT,
+    resolved_text         TEXT,
+
     PRIMARY KEY (trace_id, step)
 );
 
@@ -151,8 +164,9 @@ insertStep:
 INSERT OR REPLACE INTO trace_step(
     trace_id, step, action_json, action_type,
     pre_ok, post_ok, healed, latency_ms, llm_calls,
-    state_hash_before, state_hash_after, failure_reason
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    state_hash_before, state_hash_after, failure_reason,
+    resolved_view_id, resolved_content_desc, resolved_text
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 selectSteps:
 SELECT * FROM trace_step WHERE trace_id = ? ORDER BY step;

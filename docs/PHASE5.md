@@ -186,10 +186,12 @@ to guess".
   app-launch goals is handled exactly, by canonicalising both sides against
   `AppIntent`'s verb list (E23). "launch whatsapp", "kholo whatsapp" and "open
   whatsapp" are one request. Genuine semantic paraphrase still misses.
-- **`preferStableSelector` is currently a no-op.** The selector-stability ordering
-  is documented and ranked but the compiler does not yet rewrite selectors; it
-  cannot invent a view id it never observed, and demoting coordinates when a
-  label was available is not yet implemented.
+- ~~**`preferStableSelector` is a no-op.**~~ **Implemented** (E26). The compiler
+  now sees the node the gate actually matched, so it can freeze a view id where
+  the model wrote visible text. It still cannot invent a handle that was never
+  observed, and it deliberately never promotes a parameterised selector — doing
+  so would freeze one recorded run's contact into every future replay. What is
+  still unmeasured is whether this reduces breakage in practice (E26b).
 - **No on-device measurement yet.** Every number in §2 for the *replay* column is
   arithmetic from cold-path measurements, not a measured replay. **E17** closes
   this and is the single most important remaining experiment — it is the headline

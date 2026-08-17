@@ -92,6 +92,21 @@ data class StepOutcome(
     /** Tree hash before/after — lets the compiler recognise repeated screens. */
     val stateHashBefore: Int = 0,
     val stateHashAfter: Int = 0,
+
+    /**
+     * The node the precondition gate actually matched (E26).
+     *
+     * `null` for device-directed actions, which address no element.
+     *
+     * Recorded because the *model* chose the selector and the **gate found the
+     * node**, and those are different pieces of information. A model that asks
+     * for `text="Send"` may have matched a node that also carries
+     * `viewId="com.whatsapp:id/send"` — a far more drift-resistant handle that
+     * nothing downstream could previously see. Without this the compiler can
+     * only freeze whatever the model happened to say, which is why
+     * `preferStableSelector` was a no-op: it had nothing better to choose from.
+     */
+    val resolved: UiNode? = null,
 ) {
     /** A step is only committed to the trace when both gates passed. */
     val committed: Boolean get() = preOk && postOk == true

@@ -9,6 +9,7 @@ import dev.axon.core.model.Target
 import dev.axon.core.model.TargetBy
 import dev.axon.core.model.TraceStep
 import dev.axon.core.model.VerifiedTrace
+import dev.axon.core.model.ResolvedHandles
 
 /**
  * Turns a verified trace into a replayable skill (spec §7.7) — **C1′**.
@@ -171,7 +172,16 @@ public class DefaultSkillCompiler : SkillCompiler {
 
         return CompiledStep(
             step = number,
-            selector = selector?.let { preferStableSelector(it) },
+            selector = selector?.let {
+                preferStableSelector(
+                    target = it,
+                    handles = step.resolvedHandles,
+                    // A slot-bound selector's value comes from the caller at
+                    // replay; rewriting it to a handle observed in one recorded
+                    // run would freeze that run's contact into every future one.
+                    isParameterised = selectorSlot != null,
+                )
+            },
             action = wireName(action),
             expect = action.expect,
             llmFallback = allowsFallback(action, trace),
@@ -209,7 +219,7 @@ public class DefaultSkillCompiler : SkillCompiler {
     }
 
     /**
-     * Rewrite a selector toward the most drift-resistant form available.
+     * Rewrite a selector toward the most drift-resistant form available (E26).
      *
      * §7.7 requires selector robustness, and the ordering is not arbitrary —
      * it reflects what survives an app update:
@@ -221,12 +231,59 @@ public class DefaultSkillCompiler : SkillCompiler {
      * | `text` | visible-copy changes break it |
      * | `coord` | almost nothing — rotation, font size, density |
      *
-     * A trace is only ever *demoted* here, never promoted: the compiler cannot
-     * invent a view id it did not observe. What it can do is refuse to freeze a
-     * coordinate when a label was available, which is the case that actually
-     * shows up.
+     * ## Why this was a no-op until now
+     *
+     * It returned its argument unchanged, and the comment above described an
+     * intention rather than a behaviour. The reason was not neglect: **the
+     * compiler had nothing better to choose from.** A `TraceStep` carried only
+     * the action, so the only selector in evidence was the one the model wrote —
+     * and the model writes what it can see in the prompt, which is the visible
+     * text.
+     *
+     * The gate, meanwhile, had already resolved that text to a real node which
+     * frequently carries `com.whatsapp:id/send` — a handle the app's own
+     * developer controls, immune to translation and copy changes. That was
+     * discarded. E26 records it ([ResolvedHandles]), and this can finally do
+     * what it always claimed.
+     *
+     * ## Promotion is safe; invention is not
+     *
+     * Only handles **observed on the matched node** are used. The compiler
+     * cannot fabricate a view id, and it never promotes to a handle the node did
+     * not have — so a rewrite can only ever name the same element by a
+     * different, better-attested route.
+     *
+     * A parameterised selector is left alone entirely: its value is substituted
+     * from the caller's params at replay, so rewriting it to a view id observed
+     * during *one* recorded run would freeze that run's contact into every
+     * future one. Exactly the macro-versus-skill error §7.7 warns about.
      */
-    private fun preferStableSelector(target: Target): Target = target
+    private fun preferStableSelector(
+        target: Target,
+        handles: ResolvedHandles?,
+        isParameterised: Boolean,
+    ): Target {
+        if (handles == null || isParameterised) return target
+
+        // Already the most stable form available.
+        if (target.by == TargetBy.ID) return target
+
+        handles.viewId?.let { return Target(TargetBy.ID, it) }
+
+        // A coordinate survives almost nothing, so any label beats it.
+        if (target.by == TargetBy.COORD) {
+            handles.contentDescription?.let { return Target(TargetBy.CONTENT_DESC, it) }
+            handles.text?.let { return Target(TargetBy.TEXT, it) }
+        }
+
+        // Content-description outranks visible text: it does not change when the
+        // app's copy does. Promote only when the node genuinely carried one.
+        if (target.by == TargetBy.TEXT) {
+            handles.contentDescription?.let { return Target(TargetBy.CONTENT_DESC, it) }
+        }
+
+        return target
+    }
 
     /**
      * May the planner be consulted if this step's assertion fails on replay?

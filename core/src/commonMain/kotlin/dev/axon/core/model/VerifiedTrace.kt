@@ -93,4 +93,35 @@ data class TraceStep(
 
     /** Verifier's explanation when this step failed. Null on success. */
     @SerialName("failure_reason") val failureReason: String? = null,
+
+    /**
+     * The handles the gate's matched node actually carried (E26).
+     *
+     * Not the whole [UiNode]: only the three fields a selector can be built
+     * from. Episodic memory grows without bound on a phone, and a full node per
+     * step — bounds, role, flags, children — would multiply the trace table's
+     * size for information the compiler never reads.
+     */
+    @SerialName("resolved_handles") val resolvedHandles: ResolvedHandles? = null,
 )
+
+/**
+ * What a matched element could be addressed by (§7.7 selector robustness, E26).
+ *
+ * The model picks a selector from what it can see in the prompt, which is
+ * usually the visible text. The *gate* resolves that to a real node, and that
+ * node often carries a much more stable handle — an Android view id, which the
+ * app's developer controls and which survives translation and copy changes.
+ *
+ * Recording all three lets the compiler freeze the most drift-resistant one
+ * available rather than whatever the model said. It cannot invent a handle that
+ * was never observed; it can stop discarding one that was.
+ */
+@Serializable
+data class ResolvedHandles(
+    @SerialName("view_id") val viewId: String? = null,
+    @SerialName("content_desc") val contentDescription: String? = null,
+    val text: String? = null,
+) {
+    val isEmpty: Boolean get() = viewId == null && contentDescription == null && text == null
+}

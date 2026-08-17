@@ -168,6 +168,10 @@ public class DefaultExecutor(
             latencyMs = nowMs() - started,
             stateHashBefore = state.contentHash,
             stateHashAfter = after.contentHash,
+            // E26: what the gate matched, not what the model asked for. The
+            // compiler uses it to freeze a more drift-resistant selector than
+            // the model happened to choose.
+            resolved = resolved,
         )
     }
 

@@ -3,6 +3,7 @@ package dev.axon.core.storage
 import dev.axon.core.memory.TraceStore
 import dev.axon.core.model.AxonJson
 import dev.axon.core.model.DeviceAction
+import dev.axon.core.model.ResolvedHandles
 import dev.axon.core.model.TaskOutcome
 import dev.axon.core.model.TraceStep
 import dev.axon.core.model.VerifiedTrace
@@ -80,6 +81,12 @@ public class SqlTraceStore(
                     state_hash_before = step.stateHashBefore,
                     state_hash_after = step.stateHashAfter,
                     failure_reason = step.failureReason,
+                    // E26 — see Trace.sq. Flattened to three columns rather
+                    // than nested, so the compiler's selector promotion works
+                    // on traces reloaded after a restart.
+                    resolved_view_id = step.resolvedHandles?.viewId,
+                    resolved_content_desc = step.resolvedHandles?.contentDescription,
+                    resolved_text = step.resolvedHandles?.text,
                 )
             }
         }
@@ -183,6 +190,11 @@ public class SqlTraceStore(
                 stateHashBefore = s.state_hash_before,
                 stateHashAfter = s.state_hash_after,
                 failureReason = s.failure_reason,
+                resolvedHandles = ResolvedHandles(
+                    viewId = s.resolved_view_id,
+                    contentDescription = s.resolved_content_desc,
+                    text = s.resolved_text,
+                ).takeUnless { it.isEmpty },
             )
         }
 

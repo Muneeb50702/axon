@@ -6,6 +6,7 @@ import dev.axon.core.model.TaskOutcome
 import dev.axon.core.model.TaskResult
 import dev.axon.core.model.TraceStep
 import dev.axon.core.model.VerifiedTrace
+import dev.axon.core.model.ResolvedHandles
 
 /**
  * Turns a completed run into an episodic record (spec §7.8, §10.5).
@@ -68,6 +69,17 @@ public class TraceRecorder(
         stateHashBefore = outcome.stateHashBefore,
         stateHashAfter = outcome.stateHashAfter,
         failureReason = failureOf(outcome),
+        // E26: the handles the gate's matched node carried, so the compiler can
+        // freeze a more drift-resistant selector than the model chose. Dropped
+        // entirely when the node offered nothing addressable, rather than stored
+        // as an object of three nulls.
+        resolvedHandles = outcome.resolved?.let { node ->
+            ResolvedHandles(
+                viewId = node.viewId,
+                contentDescription = node.contentDescription,
+                text = node.text,
+            ).takeUnless { it.isEmpty }
+        },
     )
 
     private fun failureOf(outcome: StepOutcome): String? = when {
