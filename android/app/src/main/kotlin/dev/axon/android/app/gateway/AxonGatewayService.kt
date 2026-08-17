@@ -12,6 +12,7 @@ import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import dev.axon.android.app.AxonAgent
 import dev.axon.android.app.R
+import dev.axon.core.executor.ConfirmationReason
 import dev.axon.core.model.Goal
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -92,6 +93,13 @@ class AxonGatewayService : LifecycleService() {
                 val utterance = intent.getStringExtra(EXTRA_GOAL).orEmpty()
                 if (utterance.isNotBlank()) startTask(utterance)
             }
+
+            // §16: the user's answer to an irreversible action. Delivered as a
+            // service intent because the notification is the only surface
+            // reachable while AXON is driving *another* app — which is exactly
+            // when an irreversible action gets proposed.
+            ACTION_APPROVE -> agent?.approvePending()
+            ACTION_DENY -> agent?.denyPending()
         }
 
         startForeground(NOTIFICATION_ID, notification(getString(R.string.gateway_idle)))
@@ -126,6 +134,13 @@ class AxonGatewayService : LifecycleService() {
             stopSelf()
             return
         }
+
+        // §16 guardrail: irreversible actions are asked, not assumed.
+        //
+        // The gate was DENY and nothing replaced it, so AXON refused every call,
+        // message and payment outright. That is the right way to fail with no UI
+        // and it is not what §16 asks for, which is that the user be *asked*.
+        agent?.let { a -> a.confirmationGate = a.interactiveGate(::askToConfirm) }
 
         currentTask = lifecycleScope.launch {
             val a = agent ?: return@launch
@@ -165,6 +180,49 @@ class AxonGatewayService : LifecycleService() {
                 .onSuccess { update("${it.outcome} — ${it.steps.size} steps, ${it.totalMs / 1000}s") }
                 .onFailure { update("error: ${it.message}") }
         }
+    }
+
+    /**
+     * Put an irreversible action in front of the user (§16).
+     *
+     * Replaces the ongoing notification with one carrying Approve and Deny, at
+     * HIGH importance so it surfaces over whatever app AXON is driving. The
+     * executor is suspended at this moment with the action one dispatch away, so
+     * an unanswered prompt is a stalled task rather than a silent act — which is
+     * the correct failure direction and the reason the gate blocks rather than
+     * defaulting.
+     *
+     * The text names the *effect*, not the mechanism: "place a call to Ammi",
+     * not "dispatch a tap on element 7". A confirmation the user cannot evaluate
+     * is a dialog they will learn to dismiss.
+     */
+    private fun askToConfirm(reason: ConfirmationReason) {
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.notify(NOTIFICATION_ID, confirmationNotification(reason))
+    }
+
+    private fun confirmationNotification(reason: ConfirmationReason): Notification {
+        fun action(name: String) = PendingIntent.getService(
+            this,
+            name.hashCode(),
+            Intent(this, AxonGatewayService::class.java).setAction(name),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+
+        return notificationBuilder(this)
+            .setContentTitle(getString(R.string.confirm_title))
+            .setContentText(getString(R.string.confirm_text, reason.effect, reason.label))
+            .setStyle(
+                Notification.BigTextStyle().bigText(
+                    getString(R.string.confirm_text, reason.effect, reason.label),
+                ),
+            )
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setOngoing(true)
+            .setCategory(Notification.CATEGORY_SERVICE)
+            .addAction(android.R.drawable.ic_menu_send, getString(R.string.confirm_allow), action(ACTION_APPROVE))
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, getString(R.string.confirm_deny), action(ACTION_DENY))
+            .build()
     }
 
     /**
@@ -243,6 +301,8 @@ class AxonGatewayService : LifecycleService() {
         private const val NOTIFICATION_ID = 1001
 
         const val ACTION_RUN = "dev.axon.action.RUN"
+        const val ACTION_APPROVE = "dev.axon.action.APPROVE"
+        const val ACTION_DENY = "dev.axon.action.DENY"
         const val ACTION_STOP = "dev.axon.action.STOP"
         const val EXTRA_GOAL = "goal"
 

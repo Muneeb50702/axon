@@ -9,6 +9,7 @@ import dev.axon.android.inference.LlamaEngine
 import dev.axon.core.executor.ConfirmationGate
 import dev.axon.core.executor.ConfirmationReason
 import dev.axon.core.executor.DefaultExecutor
+import dev.axon.core.executor.InteractiveConfirmationGate
 import dev.axon.core.model.CompactState
 import dev.axon.core.model.Goal
 import dev.axon.core.model.TaskResult
@@ -146,6 +147,39 @@ class AxonAgent(private val context: Context) {
     /** The approval currently awaiting the user, if any. */
     private val _pending = MutableStateFlow<ConfirmationReason?>(null)
     val pending: StateFlow<ConfirmationReason?> = _pending.asStateFlow()
+
+    /**
+     * How the user is asked (§16, E28).
+     *
+     * The policy — one question at a time, fail closed on anything unexpected —
+     * lives in `:core` as [InteractiveConfirmationGate], where it is unit-tested
+     * on the JVM. Only the surface that shows the question is Android, and only
+     * that part is here. `:android:app` has no test suite, and this is the last
+     * thing standing between the model and an irreversible act.
+     */
+    fun interactiveGate(onAsk: (ConfirmationReason) -> Unit): ConfirmationGate {
+        val gate = InteractiveConfirmationGate(
+            present = { reason ->
+                _pending.value = reason
+                onAsk(reason)
+            },
+            dismiss = { _pending.value = null },
+        )
+        interactive = gate
+        return gate
+    }
+
+    private var interactive: InteractiveConfirmationGate? = null
+
+    /** The user said yes to the outstanding request. */
+    fun approvePending() {
+        interactive?.approve()
+    }
+
+    /** The user said no, or dismissed the request. */
+    fun denyPending() {
+        interactive?.deny()
+    }
 
     val isServiceEnabled: Boolean get() = AxonAccessibilityService.isConnected
     val isModelLoaded: Boolean get() = engine != null

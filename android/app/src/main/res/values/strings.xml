@@ -13,4 +13,12 @@
     <string name="gateway_running">AXON is operating your device</string>
     <string name="gateway_idle">AXON is ready</string>
     <string name="gateway_stop">Stop</string>
+
+    <!-- §16: the user is asked before an irreversible action, and the text names
+         the effect rather than the mechanism. A confirmation nobody can evaluate
+         is one they learn to dismiss. -->
+    <string name="confirm_title">AXON needs your approval</string>
+    <string name="confirm_text">Allow AXON to %1$s? (%2$s)</string>
+    <string name="confirm_allow">Allow once</string>
+    <string name="confirm_deny">No</string>
 </resources>
