@@ -151,6 +151,18 @@ class BenchMetricsTest {
     }
 
     @Test
+    fun `an unmeasured valid-action rate is null, never zero`() {
+        // The C3 column. It cannot be derived from a trace — a malformed
+        // generation never becomes a step, so counting steps would report 100%
+        // for every arm including the unconstrained one whose entire purpose is
+        // to emit malformed output. When the planner did not report generation
+        // counts there is no number, and printing 0% would fabricate a result in
+        // the column that carries the contribution.
+        val m = BenchMetrics.of("D", listOf(score(emitted = 0, valid = 0)))
+        assertNull(m.validActionRate)
+    }
+
+    @Test
     fun `valid-action rate is over actions, not over tasks`() {
         // The C3 numerator. Under config B this must be 100% by construction —
         // a lower value means the grammar was not actually installed, which is
@@ -160,7 +172,7 @@ class BenchMetricsTest {
             score("a", emitted = 4, valid = 2),
             score("b", emitted = 6, valid = 4),
         ))
-        assertEquals(6.0 / 10.0, m.validActionRate, 1e-9)
+        assertEquals(6.0 / 10.0, m.validActionRate!!, 1e-9)
     }
 
     @Test

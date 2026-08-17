@@ -77,7 +77,10 @@ public object AblationTable {
         append(tick(config.skillReplay).padEnd(5))
         append("${m.attempted}".padEnd(6))
         append(pct(m.taskSuccessRate).padEnd(9))
-        append(pct(m.validActionRate).padEnd(9))
+        // "n/m" — not measured. See BenchMetrics.validActionRate: this figure
+        // has to come from the planner, and a blank is honest where a zero
+        // would be a fabricated result in the column that carries C3.
+        append((m.validActionRate?.let { pct(it) } ?: "n/m").padEnd(9))
         append(num(m.llmCallsPerTask).padEnd(10))
         append((m.stepEfficiency?.let { num(it) + "x" } ?: "—").padEnd(8))
         append((m.recoveryRate?.let { pct(it) } ?: "n/a").padEnd(8))

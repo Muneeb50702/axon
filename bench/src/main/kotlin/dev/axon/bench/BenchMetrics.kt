@@ -57,14 +57,22 @@ data class BenchMetrics(
     @SerialName("llm_calls_per_task") val llmCallsPerTask: Double,
 
     /**
-     * §14.2 Valid-Action Rate: share of emitted actions that were well-formed.
+     * §14.2 Valid-Action Rate: share of *generations* that were well-formed.
      *
-     * The C3 number. An action that the grammar could not have produced is one
-     * the model produced *despite* it — so under config B this should be 100%
-     * by construction, and a value below it means the grammar was not actually
-     * installed (D9's failure mode: silently absent constraints).
+     * The C3 number, and **`null` when it was not measured.**
+     *
+     * It cannot be derived from a trace. A malformed generation never becomes a
+     * step — it fails to parse and the planner discards it — so counting steps
+     * would give 100% for every arm, including the unconstrained one whose whole
+     * purpose is to emit malformed output. The denominator lives in the planner,
+     * which sees the raw generations, and has to be passed in.
+     *
+     * Null rather than 0.0 for the same reason [recoveryRate] is: an arm with no
+     * measurement and an arm that emitted nothing valid are opposite findings,
+     * and printing 0% for the first would be a fabricated result in the column
+     * that carries C3.
      */
-    @SerialName("valid_action_rate") val validActionRate: Double,
+    @SerialName("valid_action_rate") val validActionRate: Double?,
 
     /**
      * §14.2 Recovery Rate: share of failed steps that were healed — the C2 number.
@@ -86,7 +94,7 @@ data class BenchMetrics(
     public fun render(): String = buildString {
         append(config.padEnd(6))
         append("TSR ").append(pct(taskSuccessRate)).append("  ")
-        append("valid ").append(pct(validActionRate)).append("  ")
+        append("valid ").append(validActionRate?.let { pct(it) } ?: "n/m   ").append("  ")
         append("LLM/task ").append(fmt(llmCallsPerTask)).append("  ")
         append("steps ").append(stepEfficiency?.let { fmt(it) + "x" } ?: "—").append("  ")
         append("recovery ").append(recoveryRate?.let { pct(it) } ?: "n/a").append("  ")
@@ -132,7 +140,8 @@ data class BenchMetrics(
                     ?.average(),
                 llmCallsPerTask = attempted.map { it.trace.llmCalls.toDouble() }
                     .takeIf { it.isNotEmpty() }?.average() ?: 0.0,
-                validActionRate = ratio(valid, actions),
+                // Null when nothing reported generations — see the property.
+                validActionRate = if (actions == 0) null else ratio(valid, actions),
                 // null, not 0.0, when nothing failed — see the property's docs.
                 recoveryRate = if (failedSteps == 0) null else ratio(healed, failedSteps),
                 medianLatencyMs = latencies.quantile(0.50),

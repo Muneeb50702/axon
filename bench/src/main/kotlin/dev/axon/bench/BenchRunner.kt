@@ -82,15 +82,30 @@ public class BenchRunner(
             task = task,
             trace = trace,
             oraclePassed = oracleHeld,
-            actionsEmitted = trace.steps.size,
-            // An action that reached the executor at all was well-formed: the
-            // grammar rejects malformed output before it can become a step, and
-            // an unparseable generation never produces one. So the valid-action
-            // numerator is the steps that exist, and the denominator has to come
-            // from the arm's own generation count — which is why config A, whose
-            // whole point is malformed output, needs the planner to report
-            // attempts rather than the harness inferring them. See [validActions].
-            validActions = trace.steps.count { it.preOk },
+            // Deliberately left at zero: **the runner cannot compute the
+            // valid-action rate and must not appear to.**
+            //
+            // §14.2 defines it as the share of *generations* that were
+            // syntactically and enumeratively valid — the C3 number. A trace
+            // cannot supply it, because a malformed generation never becomes a
+            // step: it fails to parse, the planner discards it, and nothing
+            // reaches the executor. So `steps.size` counts only the generations
+            // that already succeeded, and a rate computed from it would be 100%
+            // for every arm including the unconstrained one whose entire purpose
+            // is to emit malformed output.
+            //
+            // An earlier version of this line used `steps.count { it.preOk }`,
+            // which is the *precondition gate* pass rate — a different quantity
+            // measuring whether the named element existed, not whether the JSON
+            // was well-formed. It would have reported a plausible number for the
+            // wrong thing, which is worse than reporting none.
+            //
+            // The figure has to come from the planner, which sees the raw
+            // generations. E4b measures it that way in instrumentation and it is
+            // the caller's job to pass it in; [BenchMetrics] treats a zero
+            // denominator as "not measured" rather than as 0%.
+            actionsEmitted = 0,
+            validActions = 0,
         )
         onProgress(score)
         return score
