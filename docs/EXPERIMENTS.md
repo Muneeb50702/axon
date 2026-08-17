@@ -782,6 +782,189 @@ see without a stopwatch.
   gateway service and the UI touching the store during a task is untested under
   contention.
 
+---
+
+## E21b/c — E21 on device: inert, then correct, then terminating
+
+*2026-08-17 · TECNO Camon 20 (Helio G85) · Gemma 3 1B Q4_K_M · battery 38→37% ·
+CPU 34→42 °C · live WhatsApp, gateway foreground service*
+
+E21 collapsed the planner's grammar to a single `launch_app` when a goal names an
+installed app, and was **implemented, unit-tested and never measured on device**.
+Measuring it took three runs to reach a success, and each failure was a different
+kind of instructive.
+
+| run | outcome | model calls | wall | steps | cause |
+|---|---|---|---|---|---|
+| 1 | ESCALATED | 3 | 179 s | 1 | resolver blind — E21 never fired (E21c) |
+| 2 | BUDGET_EXHAUSTED | 6 | 426 s | 6 | E21 fired perfectly; nothing could tell it had finished |
+| 3 | **SUCCESS** | **1** | **66 s** | **1** | success oracle added |
+
+### E21c — a §16 decision silently disabled the mechanism
+
+Run 1 emitted `tap content_desc="Send"` — a hallucinated element on AXON's own
+screen. The precondition gate refused it before dispatch (`pre_ok=0`, *"no
+element matching content_desc=\"Send\" exists on this screen"*), so nothing wrong
+reached the device. But the grammar had **not** collapsed, and the reason was not
+in the planner at all.
+
+`PackageAppResolver` resolves "whatsapp" → `com.whatsapp` by reading the
+launcher's list. Android 11+ hides installed packages unless an app declares
+`<queries>`, and AXON declared none — because §6.3 excludes `QUERY_ALL_PACKAGES`
+as stalkerware-adjacent, and nothing narrower had been added in its place.
+Confirmed from the platform: `dumpsys package queries` showed **zero** entries
+for `dev.axon.android` under both *queries via package name* and *queryable via
+interaction*.
+
+So `resolve()` returned null for every app, E21's grammar collapse never fired,
+and **the strongest constraint in the system was inert on hardware while passing
+every unit test.** Every downstream symptom was misleading: a null resolution is
+a legitimate answer meaning "ambiguous", so the planner fell back to ordinary
+screen-grounded planning and behaved plausibly badly.
+
+The fix is *not* `QUERY_ALL_PACKAGES`. A `<queries>` element scoped to
+`MAIN`/`LAUNCHER` grants visibility of apps that have a launcher icon and nothing
+else — exactly the set the user already sees on their home screen and can already
+tap. Visible apps went **0 → 91**. AXON learns nothing about the device its owner
+could not learn by looking at it, and scoping visibility explicitly is a better
+§16 story than the accidental version it replaced, where the restriction held by
+omission and the cost was a feature failing silently.
+
+`PackageAppResolver` now logs loudly when the list is empty, because the
+distinguishing symptom of this bug was that there was none.
+
+### E21b — the grammar collapse worked, and the task still could not stop
+
+Run 2 is the interesting failure. With the resolver fixed, **all six generations
+emitted `launch_app com.whatsapp`**, the gate approved every one and the verifier
+confirmed every one (`pre_ok=1, post_ok=1` throughout). Against E18b — where a
+well-formed, gate-approved action opened the phone dialer — the mechanism did
+exactly what C3 claims.
+
+And the run ended in `BUDGET_EXHAUSTED` at 426 seconds, having launched WhatsApp
+six times. Nothing was wrong with any individual decision. The runtime had no way
+to know it was finished: a caller with no oracle passes one that never fires, and
+`RepetitionGuard` blocks actions that *failed*, so it correctly stayed silent
+while every step succeeded.
+
+The oracle is determined by the same reasoning that collapses the grammar. If
+"open X" has exactly one correct action without consulting the model, it has
+exactly one success condition too — **X is in the foreground** — read off the
+observed state, asking the model nothing. Same argument as C2 replacing LLM
+self-assessment with a deterministic verifier.
+
+Run 3: **1 model call, 66 s, 1 step, SUCCESS.** Two clean runs then crossed §7.7's
+threshold and compiled `open_whatsapp`.
+
+### What this says about the method
+
+E21's own framing — *"when a goal's correct action is determinable without the
+model's judgement, remove the judgement"* — turned out to be half a rule. The
+completion test is determinable by the same lookup, and omitting it produced a
+system that made six perfect decisions and could not stop. Constraining what an
+agent may *do* is not sufficient; something must also define when it is *done*.
+
+---
+
+## E22b/c/d — Persistence on device, and two bugs it exposed
+
+*2026-08-17 · TECNO Camon 20 · same session as E21b/c · live WhatsApp*
+
+### E22b — learning survives process death, measured
+
+| measurement | result |
+|---|---|
+| hydrate, empty database, cold open | **46 ms** (0 skills) |
+| hydrate, after process death | **39 ms** (1 skill) |
+| trace write, end of task | **10–31 ms** (1–6 steps) |
+| skill survives `am force-stop` | **yes** |
+
+The restart is a real `am force-stop` — the same thing the OEM power manager does
+to sustained foreground compute (E6, O1) — verified by confirming the process was
+gone before relaunching. The fresh process logged `E22b hydrate: 1 skill(s) in
+39 ms` before the user touched anything.
+
+Both costs are negligible against a ~60 s planning step, which was the prediction;
+it is now a number. Note the empty database opened *slower* (46 ms) than the
+populated one (39 ms) — first-open schema work dominates, and deserialising one
+skill does not register. That does not extrapolate: hydrate is O(skills), and the
+figure to watch is a store with hundreds.
+
+### E22c — the compiler was dropping every payload that is not a selector
+
+The first compiled skill **could not be replayed**, and the way it failed was
+worse than failing.
+
+`open_whatsapp` compiled to a step with no package at all. `SkillReplayer` reads
+`launch_app`'s package from the step, found nothing, and could not build the
+action — so the replay failed and fell through to a 66-second cold plan, **while
+`replay_count` incremented**. The store recorded a replay that had not happened.
+
+Cause: `compileStep` derived a step's entire payload from `action.target`, which
+is `null` by definition for `launch_app`, `press_key` and `wait`, and never
+carried the direction for `swipe` or `scroll`. **Only `tap` and `long_press`
+compiled intact.**
+
+Two of the losses were more dangerous than a failed replay. With no payload the
+replayer *defaulted*: `press_key` → BACK, `swipe` → UP, `scroll` → DOWN. A skill
+that recorded "press HOME" would have replayed "press BACK" — a wrong action
+dispatched confidently at a live device. A compiled skill is checked by no
+grammar, no gate and no planner; all three defences sit on the PLAN path. Replay
+answers to none of them, so its correctness has to come from the compiler, and
+this is the first evidence that the replay path needed a defence of its own.
+
+**Why it survived to here.** E17 — the 8,407× headline — used a hand-written
+`tap` skill, chosen because obtaining two clean runs on a real app required the
+planner to choose correctly twice, which E18b showed it did not. `tap` is one of
+the two types that happened to work. The measurement was sound; its fixture
+avoided the bug.
+
+Fixed by giving `CompiledStep` an `args` map, populated from an exhaustive `when`
+so a new action variant cannot compile without being handled, and read back with
+a fail-closed replayer that refuses rather than guessing. `ActionRoundTripTest`
+now round-trips **every** action in `DeviceAction.ACTION_TYPES`, plus a test
+asserting the corpus covers the wire format so a new action cannot go untested.
+
+One existing test had been green *because* of this bug: its trace began with
+`launch_app`, so the replay died at step one and never reached the missing-
+parameter tap the test claimed to be about. It now asserts on taps specifically.
+
+### E22d — zero model calls is not zero cost until the app stops loading the model
+
+With replay working, "open whatsapp" replayed correctly with **0 model calls** —
+in **42.8 seconds**.
+
+The gateway loaded the 806 MB GGUF before every task, unconditionally, and only
+then discovered the task needed no model. C1′ was exactly right inside the loop
+and entirely invisible to the person holding the phone.
+
+Asking the skill store *before* paying for the model:
+
+| | wall clock, cold process |
+|---|---|
+| replay, model loaded first | 42,801 ms |
+| **replay, model skipped** | **2,276 ms** |
+
+**18.8× faster**, and the remaining 2.3 s includes the adb round-trip, service
+start, database open, skill match and WhatsApp's own cold start — none of which
+is AXON deciding anything.
+
+This is a claim about where a contribution has to be true. "Replay costs zero
+model calls" was a property of `AxonRuntime` and not of AXON, and no measurement
+taken inside the runtime could have revealed the difference. `AxonRuntime.planner`
+is now nullable, which makes "replay only" a configuration the type system
+expresses rather than a state the app has to remember to avoid.
+
+### Threats to validity
+
+- **One skill, one device, n = 1** on every timing here.
+- **The 2,276 ms figure is end-to-end wall clock**, not replay in isolation, and
+  is therefore an upper bound on AXON's own cost rather than a measurement of it.
+- **Hydrate is O(skills)** and was measured with one. The number that matters for
+  a real user is a store with hundreds, and that is E22e.
+- Battery fell only 38→37% across the whole session, so thermal throttling
+  (34 → 42 °C CPU) is the more likely confound in the wall-clock figures.
+
 ## Open measurements
 
 Required before publication. Listed here so gaps are visible rather than
@@ -805,3 +988,5 @@ discovered late.
 | E21b | On-device confirmation that E21 opens the right app | needs device |
 | E21 | Grammar restricted to launch_app when the goal names an app | Phase 3 |
 | E22b | Persistence cost on device: hydrate at launch, trace-write at task end | needs device |
+| E22e | Hydrate cost with a realistic skill count (hundreds, not one) | needs a populated store |
+| E21d | Does the launch oracle generalise past app-launch goals? | Phase 7 |

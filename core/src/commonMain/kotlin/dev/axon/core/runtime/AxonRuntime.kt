@@ -48,7 +48,22 @@ import dev.axon.core.skills.SkillStore
  */
 public class AxonRuntime(
     private val driver: DeviceDriver,
-    private val planner: Planner,
+
+    /**
+     * The planner, or `null` when no model is loaded (E22d).
+     *
+     * Nullable because the replay path does not need one, and on this hardware
+     * that distinction is worth ~40 seconds. The gateway used to load the
+     * 806 MB GGUF before every task, including tasks a compiled skill could
+     * serve without consulting it — so a run that cost **zero model calls**
+     * still cost a full model load, and C1′'s benefit was thrown away at the
+     * app layer while the measurement inside the loop looked perfect.
+     *
+     * A `null` planner is therefore a legitimate configuration meaning "replay
+     * only". [execute] refuses to fall through to PLAN with one, rather than
+     * failing later and less clearly.
+     */
+    private val planner: Planner?,
     private val executor: DefaultExecutor,
     private val skills: SkillStore,
     private val traces: TraceStore,
@@ -92,6 +107,15 @@ public class AxonRuntime(
         }
 
         // ---- PLAN -----------------------------------------------------------
+        //
+        // Reached either because no skill matched, or because a matched skill's
+        // replay failed. With no planner there is nothing further to try, and
+        // saying so plainly beats a null-pointer three frames down.
+        val planner = planner ?: error(
+            "no skill matched '${goal.utterance}' and no planner is available — " +
+                "the model must be loaded to plan",
+        )
+
         val runtime = DefaultAgentRuntime(
             driver = driver,
             planner = planner,

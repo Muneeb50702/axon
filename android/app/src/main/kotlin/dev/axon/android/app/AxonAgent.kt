@@ -207,8 +207,15 @@ class AxonAgent(private val context: Context) {
         goalReached: (suspend (CompactState) -> Boolean)? = null,
     ): Result<TaskResult> = withContext(Dispatchers.Default) {
         runCatching {
-            val eng = engine ?: error("model not loaded")
             check(isServiceEnabled) { "accessibility service is not enabled" }
+
+            // The model is required to PLAN, not to REPLAY. A goal a compiled
+            // skill can serve runs with `engine == null`, and `AxonRuntime`
+            // refuses to fall through to planning without one.
+            val eng = engine
+            if (eng == null && skills.match(goal) == null) {
+                error("model not loaded")
+            }
 
             // E21b. A pure "open X" goal is one of the few whose completion test
             // is determinable without asking anything: X is in the foreground.
@@ -222,13 +229,16 @@ class AxonAgent(private val context: Context) {
 
             val runtime = AxonRuntime(
                 driver = driver,
-                planner = ConstrainedPlanner(
-                    engine = eng,
-                    // E21: "open X" resolves to a package, and the grammar then
-                    // collapses to that single action. E18b measured a 1B model
-                    // failing exactly this choice — it opened the dialer.
-                    appResolver = appResolver,
-                ),
+                planner = eng?.let {
+                    ConstrainedPlanner(
+                        engine = it,
+                        // E21: "open X" resolves to a package, and the grammar
+                        // then collapses to that single action. E18b measured a
+                        // 1B model failing exactly this choice — it opened the
+                        // dialer.
+                        appResolver = appResolver,
+                    )
+                },
                 executor = DefaultExecutor(
                     driver,
                     nowMs = System::currentTimeMillis,
@@ -239,7 +249,12 @@ class AxonAgent(private val context: Context) {
                 compiler = DefaultSkillCompiler(),
                 recorder = TraceRecorder(
                     device = driver.deviceFamily,
-                    model = eng.modelId,
+                    // "none" when replaying without a model loaded. The recorder
+                    // is unused on that path — a clean replay writes no trace —
+                    // but the provenance has to be honest if it ever does: a
+                    // trace attributed to a model that was never consulted would
+                    // corrupt the very measurement C1′ rests on.
+                    model = eng?.modelId ?: "none (replay)",
                     newId = { "trace-$sessionId-${traceSeq++}" },
                     nowMs = System::currentTimeMillis,
                 ),
@@ -271,6 +286,19 @@ class AxonAgent(private val context: Context) {
             Log.e(TAG, "task failed", e)
             _state.value = _state.value.copy(running = false, status = "error: ${e.message}")
         }
+    }
+
+    /**
+     * Can this goal be served without the model? (E22d)
+     *
+     * Lets the caller skip a ~40-second GGUF load for a task a compiled skill
+     * already handles. Measured: replaying "open whatsapp" took 42.8 s wall
+     * clock and **zero model calls**, essentially all of it spent loading a
+     * model that was then never consulted. C1′ was correct inside the loop and
+     * invisible to the person holding the phone.
+     */
+    suspend fun canReplay(goal: Goal): Boolean = withContext(Dispatchers.IO) {
+        runCatching { skills.match(goal) != null }.getOrDefault(false)
     }
 
     /**

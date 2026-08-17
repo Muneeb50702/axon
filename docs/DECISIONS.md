@@ -520,3 +520,43 @@ next launch.
 **How to reverse.** `InMemorySkillStore` and `InMemoryTraceStore` still exist and
 still implement the same interfaces; the bench harness uses them. Swapping the
 two constructor lines in `AxonAgent` reverts the app.
+
+---
+
+## D12 — Package visibility scoped to launchable apps, not `QUERY_ALL_PACKAGES`
+
+*Date: 2026-08-17. Affects: §6.3, §16, E21, and whether E21 works at all.*
+
+**Found on device (E21c).** AXON's manifest declared no `<queries>` element, so
+Android 11+ package-visibility filtering hid every installed app from it.
+`PackageAppResolver` saw **zero** launchable apps, `resolve("whatsapp")` returned
+null for every name, and E21's grammar collapse — the strongest constraint in the
+system — never fired. It passed every unit test and was inert on hardware.
+
+That was not a decision. §6.3 excludes `QUERY_ALL_PACKAGES` as
+stalkerware-adjacent, correctly, and nothing narrower was added in its place, so
+the restriction held by omission and its cost was a feature failing silently.
+
+**Did.** Declare visibility of apps matching `MAIN`/`LAUNCHER` only:
+
+| | reveals |
+|---|---|
+| `QUERY_ALL_PACKAGES` | every installed package, including non-launchable services and providers |
+| **`<queries>` MAIN/LAUNCHER** | **apps with a launcher icon — what the user already sees** |
+
+Strictly narrower, and sufficient: AXON needs to map a name a person used to a
+package a person could have tapped. It learns nothing about the device that its
+owner could not learn by looking at it. Visible apps: **0 → 91**.
+
+**Why this strengthens §16 rather than weakening it.** The excluded-capability
+list is an argument about what AXON *may* know. Holding to it by accident, with
+no declaration and no diagnostic, is not that argument — it is the absence of
+one. An explicit `<queries>` scoped to the launcher makes the boundary reviewable
+in the manifest, next to the `INTERNET` permission that is also not there.
+
+**Also did.** `PackageAppResolver` logs an error when the list is empty. The
+distinguishing symptom of this bug was that there was none: a null resolution is
+a legitimate answer meaning "ambiguous", so every downstream behaviour looked
+plausible. A capability that can be switched off by the platform needs to say so.
+
+**How to reverse.** Delete the `<queries>` element. E21 stops working, loudly.

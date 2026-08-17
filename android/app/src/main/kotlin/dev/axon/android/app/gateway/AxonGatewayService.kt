@@ -130,7 +130,22 @@ class AxonGatewayService : LifecycleService() {
         currentTask = lifecycleScope.launch {
             val a = agent ?: return@launch
 
-            if (!a.isModelLoaded) {
+            // E22d. Ask the skill store *before* paying for the model.
+            //
+            // Loading the GGUF costs ~40 s on this hardware. Doing it
+            // unconditionally meant a task a compiled skill could serve without
+            // the model still waited for the model — so a run that genuinely
+            // cost **zero model calls** cost a full model load anyway, and the
+            // whole user-visible benefit of C1′ was thrown away here, at the app
+            // layer, while the measurement inside the loop looked perfect.
+            //
+            // This is the difference between "replay is free" as a property of
+            // the runtime and as something the person holding the phone
+            // experiences.
+            val goal = Goal(utterance, stepBudget = 6)
+            val replayable = a.canReplay(goal)
+
+            if (!replayable && !a.isModelLoaded) {
                 update("loading model…")
                 a.load().onFailure {
                     update("model failed to load")
@@ -138,13 +153,13 @@ class AxonGatewayService : LifecycleService() {
                 }
             }
 
-            update("running: $utterance")
+            update(if (replayable) "replaying: $utterance" else "running: $utterance")
 
             // The step budget is deliberately small for interactive use. At ~60 s
             // per planning step on this hardware, a generous budget means a task
             // that has gone wrong keeps going wrong for ten minutes while the
             // user watches. Better to escalate early and let them redirect.
-            val result = a.run(Goal(utterance, stepBudget = 6))
+            val result = a.run(goal)
 
             result
                 .onSuccess { update("${it.outcome} — ${it.steps.size} steps, ${it.totalMs / 1000}s") }

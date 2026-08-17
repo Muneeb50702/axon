@@ -34,7 +34,7 @@ holds across restarts rather than within a session (E22).
 | [`docs/PHASE5.md`](docs/PHASE5.md) | Phase 5 (C1′) walkthrough and defence preparation |
 | [`docs/paper/OUTLINE.md`](docs/paper/OUTLINE.md) | paper structure, claims mapped to supporting experiments |
 
-Two rules this repository holds itself to, both learned the hard way on day one:
+Three rules this repository holds itself to, each learned the hard way:
 
 - **A number that cannot be traced to an entry in `EXPERIMENTS.md` does not get
   published.** Decision D9 is why: an unoptimised native build made every latency
@@ -43,6 +43,11 @@ Two rules this repository holds itself to, both learned the hard way on day one:
 - **An experiment whose baseline is strawmanned is marked void, not quietly
   improved.** E4 is why: a 100%-vs-0% result turned out to be measuring a prompt
   bug rather than the grammar.
+- **A mechanism that has not run on the device has not been shown to work.** E21c
+  is why: the strongest constraint in the system passed every unit test and was
+  switched off entirely on hardware by Android's package-visibility filtering,
+  with no error anywhere. Unit tests establish that code is correct, not that it
+  is reachable.
 
 ---
 
@@ -59,7 +64,7 @@ See [`docs/PHASE1.md`](docs/PHASE1.md).
 | 2 | AccessibilityDriver, perception, executor + precondition gate | ✅ done |
 | 3 | Planner in the loop, end-to-end PLAN path | ✅ running on device |
 | 4 | Verifier + self-healing — **C2** | |
-| 5 | Skill compiler + replay — **C1′** | ✅ done, E17 measured (8,407×) |
+| 5 | Skill compiler + replay — **C1′** | ✅ done, E17 measured (8,407×), replay confirmed on device |
 | 6 | Gateway, capability sandbox, SQLite persistence, second client | ◐ gateway + adb client + §11 storage done |
 | 7 | AXON-Bench + ablation matrix — **C3/C5** | |
 | 8 | Hardening, thesis, defence | |
