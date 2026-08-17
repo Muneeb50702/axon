@@ -1115,6 +1115,89 @@ ordinary two-clean-runs path.
 - Whether the decomposer's over-splitting produces false composition in a store
   with many skills. The unit tests cover the obvious cases, not a population.
 
+---
+
+## E25 — The verifier checked before the app had started
+
+*2026-08-17 - TECNO Camon 20 - found in a user's own run, not a designed
+experiment - trace `...15-0`*
+
+### What happened
+
+Asked to **"go to LinkedIn"**, AXON escalated after **203 seconds** across three
+steps. The trace:
+
+| step | action | pre | post | observed |
+|---|---|---|---|---|
+| 0 | `launch_app` | yes | **no** | "a screen with no readable elements (unknown)" |
+| 1 | `tap` LinkedIn | no | no | no such element on this screen |
+| 2 | `tap` | yes | no | launcher showing CamScanner, Chrome... |
+
+**Step 0 had already succeeded.** E21's grammar collapse fired, the resolver
+returned `com.linkedin.android`, the gate approved, the launch was dispatched -
+and the verifier looked 500 ms later, saw LinkedIn's splash screen with an empty
+accessibility tree, and called it a failure. The remaining 200 seconds were spent
+hunting for a "LinkedIn" element on the launcher.
+
+### Why every previous experiment passed
+
+Verification was a single observation after a fixed `settleMs = 500`, chosen
+because an Android transition runs 200-400 ms. That is correct for a transition
+and wrong for a **cold app start on a Helio G85**: a process fork, a splash
+screen and a first layout pass.
+
+WhatsApp starts fast enough to beat 500 ms. Every experiment to date - E17, E21b,
+E22b, E23 - used WhatsApp. The constant was never wrong for anything that had
+been tried, which is the general shape of the C5 substrate finding: **on low-end
+hardware the timings a developer assumes are the ones that break**, and they
+break on the heavier app nobody benchmarked.
+
+### The fix, and the fix to the fix
+
+Verification now polls until the post-condition holds or a per-action deadline
+expires - 8 s for `launch_app`, 3 s for an in-app transition, and a `wait`
+action's own stated timeout. Polling rather than a longer fixed settle, because a
+5-second settle would fix LinkedIn and make every tap five seconds slower on a
+device where six-step tasks are already minutes.
+
+The first implementation retried on **any** unmet condition, and that is worth
+recording because it was worse than the bug:
+
+> Every genuine mismatch - a tap on the wrong button, an assertion that can never
+> hold - waited out the full deadline while re-observing the device. The test
+> suite went from **9 seconds to 7 minutes**, and seven tests failed outright
+> because repeated `observe()` calls consumed the scripted screens their
+> assertions depended on.
+
+The retry predicate is now narrow, and only fires on positive evidence that the
+UI has not finished rendering:
+
+- **an empty tree** - no real screen has zero readable elements; this is an app
+  mid-launch, and exactly what LinkedIn showed;
+- **a launch whose target is not yet foreground** - the splash may have nodes
+  while the package still is not in front.
+
+A screen that is populated and simply fails the condition is a genuine mismatch.
+Waiting cannot change it, and the verdict is more useful delivered promptly.
+
+### Why this matters beyond one app
+
+The precondition gate and the verifier both read the *live* UI tree, and this is
+the first measured case of that tree being **transiently empty rather than
+wrong**. "Not ready yet" and "not there" had been the same observation, and the
+system treated both as failure. They are now distinguishable, which is a
+correctness property the three structural defences depend on: a gate that cannot
+tell an unloaded screen from an absent element will refuse correct actions on
+slow hardware, which is precisely the hardware this project targets.
+
+### Threats to validity
+
+- **Found, not designed.** n = 1, from ordinary use. LinkedIn's 500 ms-plus cold
+  start is not characterised; 8 s is chosen with margin, not measured.
+- **Not yet re-run on device.** The regression is covered by two JVM tests - a
+  slow launch that arrives, and a genuine mismatch that must fail promptly - but
+  per E21c's rule, the on-device confirmation (E25b) is still owed.
+
 ## Open measurements
 
 Required before publication. Listed here so gaps are visible rather than
@@ -1142,3 +1225,4 @@ discovered late.
 | E21d | Does the launch oracle generalise past app-launch goals? | Phase 7 |
 | E23b | False-match rate for canonicalisation across many launch skills | needs a populated store |
 | E24b | Composition on device: compound goal, two skills, 0 model calls | needs device |
+| E25b | Re-run 'go to LinkedIn' and other slow-starting apps on device | needs device |
