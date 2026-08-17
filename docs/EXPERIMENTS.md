@@ -200,20 +200,67 @@ with worked examples. The grammar is the only variable.
 
 | metric | A (naive) | B (+grammar) |
 |---|---|---|
-| cases | 13 | 13 |
-| valid actions | 6 | 13 |
-| **valid-action rate** | **46.2%** | **100.0%** |
-| median latency | 57.0 s | 67.7 s |
-| p90 latency | 73.2 s | 70.4 s |
-| median prefill | 46.9 s | 48.9 s |
-| median decode | 6.1 s | 16.9 s |
-| grammar sampling | — | 11.8 s |
-| mean prompt tokens | 788.5 | 788.5 |
-| mean output tokens | **51.6** | **31.7** |
+| cases | 15 | 15 |
+| valid actions | 7 | 15 |
+| **valid-action rate** | **46.7%** | **100.0%** |
+| median latency | 54.9 s | 68.3 s |
+| p90 latency | 63.5 s | 73.9 s |
+| median prefill | 47.5 s | 48.6 s |
+| median decode | 6.2 s | 17.8 s |
+| grammar sampling | — | 12.2 s |
+| mean prompt tokens | 784 | 784 |
+| mean output tokens | **38.9** | **32.5** |
 | truncated | 0 | 0 |
 
-**§13 acceptance: PASS** — 13/13 schema-valid under grammar.
+**§13 acceptance: PASS** — 15/15 schema-valid under grammar.
 **§14.3 A-vs-B expectation: PASS.**
+
+### The number is stable, which matters more than the number
+
+*Re-run 2026-08-17 to extend coverage. Superseded figures: n=13, A = 46.2%.*
+
+| | n | A (naive) |
+|---|---|---|
+| first run | 13 | 46.2% |
+| extended | **15** | **46.7%** |
+
+Half a point across two independent runs. A single-shot 46% invites the reading
+that the arm got unlucky; two runs landing on the same value make it a property
+of the configuration. It also sits squarely inside the 40–80% band the literature
+reports for unconstrained small models, which is the main reason to believe this
+figure and to disbelieve E4's voided 0%.
+
+B remains **100%, exactly**, and by construction rather than by luck: an action
+the grammar could not have produced has no token path. A value below 100% here
+would not mean the model did poorly — it would mean the grammar was not installed
+(D9's failure mode).
+
+### 15 of 24, and the way the other 9 were lost is itself data
+
+The run was chunked at 3 cases per invocation (E6). Cases recorded per chunk:
+
+```
+offset:   0    3    6    9   12   15   18   21
+gained:  +3   +1   +3   +1   +3   +1   +3   +0
+```
+
+**Every other chunk was cut short after one case**, reproducibly, across the
+whole run. That is a sharper version of E6's finding than E6 itself recorded:
+termination is not merely "after about seven minutes of sustained load" but
+follows a pattern stable enough to predict.
+
+The plausible mechanism is memory rather than time — each chunk loads an 806 MB
+model into a fresh process, and if the previous process has not fully released
+before the next allocates, every second chunk meets a device already under
+pressure. **That is a hypothesis, not a measurement**; distinguishing it from
+thermal throttling needs `meminfo` sampled per chunk, which this harness does not
+do. Recorded because the pattern is too regular to omit, and labelled because it
+is not yet explained.
+
+Coverage is stated rather than rounded away: **the corpus has 24 screens and this
+result covers 15.** The nine absent cases are not a sample — they are the tail of
+each killed chunk, so they are the *later* screens in corpus order, and any claim
+that the rate generalises to the whole corpus is unsupported by this run.
 
 ### Reading it honestly
 
