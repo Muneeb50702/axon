@@ -54,3 +54,17 @@ val exportGrammar by tasks.registering(JavaExec::class) {
     args(layout.buildDirectory.file("axon-action.gbnf").get().asFile.path)
     outputs.file(layout.buildDirectory.file("axon-action.gbnf"))
 }
+
+/**
+ * E26b — selector promotion under UI drift.
+ *
+ * A `JavaExec` rather than a test that prints, because the table is a research
+ * artefact someone reproduces on demand; the *assertions* about it live in
+ * SkillDriftStudyTest and run on every build.
+ */
+val driftStudy by tasks.registering(JavaExec::class) {
+    group = "verification"
+    description = "Print E26b: does selector promotion survive UI drift?"
+    mainClass.set("dev.axon.bench.RunSkillDriftStudy")
+    classpath = sourceSets["main"].runtimeClasspath
+}

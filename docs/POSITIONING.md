@@ -137,12 +137,31 @@ stability, and the interesting questions are empirical:
 corpus now ships it, so the benchmark hooks exist. This turns §17's
 "fragmentation is a risk" into a study.
 
-Two mechanisms are now implemented and **deliberately unclaimed** until that
-study runs: the compiler promotes a selector to the sturdiest handle the gate
+Two mechanisms are now implemented and were **deliberately unclaimed** until that
+study ran: the compiler promotes a selector to the sturdiest handle the gate
 actually matched (E26), and the store retires a skill repaired more often than
-not (E27). Both are reasoned, neither is calibrated, and the honest position is
-that they are what the study would *evaluate* rather than results it has
-produced.
+not (E27). Both were reasoned, neither calibrated.
+
+**E26b has now run, and it did not confirm E26.** Compiling the same trace under
+three selector policies and replaying each against eight classes of UI drift:
+
+| | `text` | `content_desc` | `id` (shipping) |
+|---|---|---|---|
+| survived | 5/8 | **6/8** | **6/8** |
+
+Promoting to a view id is **not better than promoting to the accessibility
+label — it is a different bet**: equal counts, disjoint failures. It buys
+immunity to every copy change and pays with the two classes that touch resource
+ids, including a Compose migration, which strips them wholesale while changing
+nothing a user sees. E26's own comments called its ordering "the most
+drift-resistant form available", which was a robustness claim the code had not
+earned.
+
+This is the shape the §3.4 study should take, and it also shows why the study
+matters: **the missing number is the frequency of each drift class in real app
+updates** (E26c). Without it, the two policies cannot be ranked — which is
+precisely the kind of gap a paper should name rather than paper over. E27
+remains unclaimed.
 
 ### 3.5 Determinism as a design method, applied repeatedly
 

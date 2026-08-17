@@ -45,7 +45,19 @@ import dev.axon.core.model.ResolvedHandles
  * reviewed and reproduced, and is therefore defensible as a research artefact
  * rather than an opaque artefact of one lucky run.
  */
-public class DefaultSkillCompiler : SkillCompiler {
+public class DefaultSkillCompiler(
+    /**
+     * Which handle a recorded selector is rewritten to (E26, measured by E26b).
+     *
+     * A parameter rather than a constant because E26 shipped on reasoning and
+     * was never measured, and §14.3's rule is that turning a feature off must
+     * remove exactly that feature. `SkillDriftStudy` compiles the same trace
+     * under each policy and replays them against the same drifted screens;
+     * without this it would hand-build the alternatives and measure a
+     * reconstruction rather than the compiler.
+     */
+    private val selectorPolicy: SelectorPolicy = SelectorPolicy.STURDIEST,
+) : SkillCompiler {
 
     override suspend fun compile(trace: VerifiedTrace): CompileResult {
         if (!trace.isCompilable) {
@@ -263,12 +275,21 @@ public class DefaultSkillCompiler : SkillCompiler {
         handles: ResolvedHandles?,
         isParameterised: Boolean,
     ): Target {
-        if (handles == null || isParameterised) return target
+        if (selectorPolicy == SelectorPolicy.NONE || handles == null || isParameterised) {
+            return target
+        }
 
         // Already the most stable form available.
         if (target.by == TargetBy.ID) return target
 
-        handles.viewId?.let { return Target(TargetBy.ID, it) }
+        // E26b measured the cost of this line. Promoting to a view id survives
+        // every copy change and dies on the two drift classes that touch ids —
+        // including a Compose migration, which removes them wholesale while
+        // changing nothing a user sees. LABEL exists so that trade is a choice
+        // rather than an accident.
+        if (selectorPolicy == SelectorPolicy.STURDIEST) {
+            handles.viewId?.let { return Target(TargetBy.ID, it) }
+        }
 
         // A coordinate survives almost nothing, so any label beats it.
         if (target.by == TargetBy.COORD) {

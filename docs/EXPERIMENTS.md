@@ -2141,6 +2141,83 @@ blocking would not show up at all.
 
 ---
 
+## E26b — Selector promotion is a trade, not an improvement
+
+*2026-08-17 · JVM, no device · 6 tests · artefact:
+`bench/results/E26b-drift-study.txt` · `./gradlew :bench:driftStudy`*
+
+§3.4 of `POSITIONING.md` lists *skill decay under UI drift* as one of five things
+genuinely AXON's, and recorded that E26 (selector promotion) and E27 (skill
+retirement) were **implemented and deliberately unclaimed** because nothing had
+measured them. This measures the first, and it does not confirm it.
+
+### Method
+
+The same recorded trace is compiled three times by the **real** compiler under
+three `SelectorPolicy` values, and all three skills are replayed by the **real**
+replayer against the same drifted screens. Nothing reimplements selector
+matching — a study that modelled the mechanism would measure the model.
+
+The replayer runs with **no planner**, deliberately. With one, a broken selector
+would be repaired and the run would succeed, measuring the fallback rather than
+the selector. E26's claim is about how often repair is *needed*.
+
+The recorded arm's selector is `text`, which is not a straw man: the screen
+grammar names elements by label and a label is `contentDescription ?: text`, so
+`text` is what actually ships when promotion is off.
+
+### Result
+
+| drift class | cause | `NONE` (text) | `LABEL` (content_desc) | `STURDIEST` (id) |
+|---|---|---|---|---|
+| copy + a11y label rewritten | localisation | ✘ | ✘ | ✔ |
+| copy rewritten, a11y label kept | reworded label | ✘ | ✔ | ✔ |
+| icon-only redesign | visual refresh | ✘ | ✔ | ✔ |
+| a11y label removed | a11y regression | ✔ | ✘ | ✔ |
+| **view id renamed** | refactor | ✔ | ✔ | **✘** |
+| **view ids removed** | **XML → Compose** | ✔ | ✔ | **✘** |
+| a11y label added | a11y improvement | ✔ | ✔ | ✔ |
+| element reordered | layout restructure | ✔ | ✔ | ✔ |
+| **survived** | | **5/8** | **6/8** | **6/8** |
+
+**The shipping policy is not better than promoting to the label — it is a
+different bet.** Equal counts, disjoint failures. E26's own comments describe its
+ordering as "the most drift-resistant form available", which reads as strictly
+better and is not: promoting to a view id buys immunity to every copy change and
+pays for it with the two classes that touch ids.
+
+The Compose case is the sharpest. A migration from XML layouts to Jetpack Compose
+frequently leaves nodes with **no resource id at all** while changing nothing a
+user would notice — and it is the *promoted* skill that dies.
+
+### Why no aggregate is reported
+
+Ranking these needs how often each drift class occurs in real app updates. **This
+study does not measure that**, and nobody here has mined a corpus of Android
+releases to find out. The 5/8, 6/8, 6/8 counts assume every class is equally
+likely, which is certainly false; they are printed because refusing to print them
+would hide how close the arms are, and labelled because reading them as a ranking
+would be the error this section exists to prevent.
+
+### What this changes, and what it does not
+
+The default stays `STURDIEST`. E26b gives no evidence for switching — only
+evidence that the choice was never neutral, and that the code claimed a
+robustness ordering it had not earned. A change of default should follow the
+frequency study, not this table.
+
+What it does change is that `SelectorPolicy` now exists, so the alternative is a
+configuration rather than a rewrite, and `SkillDriftStudyTest` states which
+classes any future change trades away.
+
+**Threats to validity.** The drift model is the experiment (see `DriftClass`),
+and it is reasoned from known causes rather than sampled from real updates —
+which is exactly the gap the "no aggregate" note above describes. Single element,
+single step, synthetic screen: this measures the *selector*, not skill survival
+end to end, and a real skill's several steps each carry this risk independently.
+
+---
+
 ## Open measurements
 
 Required before publication. Listed here so gaps are visible rather than
@@ -2169,7 +2246,7 @@ discovered late.
 | E23b | False-match rate for canonicalisation across many launch skills | needs a populated store |
 | E24e | Repeat E24c from the launcher, not a dense app screen, to separate "compound goals lose the oracle" from "that screen was distracting" | needs device |
 | E24f | The cold arm at a healthy state of charge — E24c ran at 15–16% and battery *fell* while plugged in | needs device, charged |
-| E26b | Does selector promotion reduce replay breakage under LAYOUT_VARIANT? | Phase 7 |
+| E26c | How often does each `DriftClass` actually occur? Mine real Android release diffs — the missing weights that would rank the selector policies | a corpus of app updates |
 | E27b | Skill-drift rate, and whether retirement thresholds fire correctly | Phase 7 |
 | E30 | The §14.3 **verifier** arm has no device path; grammar and skill-replay now do | needs an executor switch |
 | E32b | Confirm on device that the re-keyed repetition guard actually fires | needs a charged phone |

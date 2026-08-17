@@ -1,0 +1,30 @@
+E26b — SELECTOR PROMOTION UNDER UI DRIFT
+====================================================================================
+  NONE       compiles to  text="Send"
+  LABEL      compiles to  content_desc="Send message"
+  STURDIEST  compiles to  id="com.whatsapp:id/send"
+
+drift class     cause                             NONE  LABEL  STURDIEST
+------------------------------------------------------------------------------------
+copy_and_desc   localisation, rewording            ✘     ✘      ✔
+copy_only       reworded label, a11y label maint   ✘     ✔      ✔
+id_renamed      resource rename, package refacto   ✔     ✔      ✘
+id_removed      XML → Compose migration            ✔     ✔      ✘
+desc_removed    a11y regression in a redesign      ✔     ✘      ✔
+desc_added      a11y improvement                   ✔     ✔      ✔
+reordered       layout restructure, A/B variant    ✔     ✔      ✔
+iconified       icon-only redesign                 ✘     ✔      ✔
+------------------------------------------------------------------------------------
+survived                                          5/8   6/8    6/8
+====================================================================================
+
+LABEL and STURDIEST survive the same NUMBER of classes and differ in
+WHICH. STURDIEST is immune to every copy change and dies on the two
+classes that touch view ids — including a Compose migration, which
+removes them wholesale while changing nothing a user sees.
+
+NO WEIGHTED AGGREGATE IS REPORTED. Ranking these needs how often each
+drift class occurs in real app updates, which this study does not
+measure. The counts above assume every class is equally likely, which
+is certainly false and is stated so it cannot be mistaken for a result.
+
