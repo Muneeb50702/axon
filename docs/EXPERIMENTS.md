@@ -1474,10 +1474,27 @@ symptom.** Nothing had gone wrong yet.
 Because the finding is not "a check was missing". It is that a **README claim
 survived nine phases, a decision log and a test suite without anyone noticing it
 was unbacked**, and it was found by reading the prose against the source rather
-than by any test failing. The same audit is worth repeating for the other §16
-claims before publication, and two of them — the audit log and per-skill
-revocation — turned out to be data with no user-facing surface, fixed the same
-day (E28).
+than by any test failing. The same audit was then run against every other structural §16 claim.
+
+### The rest of the audit
+
+| README claim | status | evidence |
+|---|---|---|
+| no `INTERNET` permission | **holds** | `dumpsys package` on the device lists only FOREGROUND_SERVICE, FOREGROUND_SERVICE_SPECIAL_USE and POST_NOTIFICATIONS — checked as installed, not merely as written |
+| credential fields refused at capture | **holds** | `TreeCapture` returns before reading `node.text` *and* without descending, so a password field's children — an inline error echoing the value — are refused with it |
+| visible operation only | **holds** | `canBeSeen()` refuses to run when notifications are blocked (O2, itself a shipped violation found the same way) |
+| per-skill revocable capabilities | **was unbacked** | this entry |
+| irreversible actions need confirmation | **was unbacked** | the gate was `DENY` with no UI, so AXON refused rather than asked (E28) |
+| audit log viewable by the user | **was unbacked** | the data existed and nothing displayed it (E28) |
+
+Three of six held; three did not, and all three failures were of the same kind —
+**a mechanism present in the code with no path from it to the user.** None would
+have been caught by a test, because each component behaved correctly in
+isolation. They were found by reading the prose against the source.
+
+That ratio is the finding worth reporting. It says something uncomfortable about
+safety sections generally: the claims are written once, early, and nothing
+afterwards re-checks them.
 
 ## Open measurements
 
@@ -1508,4 +1525,3 @@ discovered late.
 | E24c | Compound goal on the PLAN path: does it complete at all? | needs device |
 | E26b | Does selector promotion reduce replay breakage under LAYOUT_VARIANT? | Phase 7 |
 | E27b | Skill-drift rate, and whether retirement thresholds fire correctly | Phase 7 |
-| — | Audit every remaining §16 and §6.3 claim against the source, as E29 did | before publication |
