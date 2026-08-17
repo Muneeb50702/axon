@@ -18,8 +18,10 @@ import dev.axon.core.memory.TraceRecorder
 import dev.axon.core.planner.AppIntent
 import dev.axon.core.planner.ConstrainedPlanner
 import dev.axon.core.runtime.AxonRuntime
+import dev.axon.core.runtime.RunConfig
 import dev.axon.core.runtime.RunOutcome
 import dev.axon.core.skills.DefaultSkillCompiler
+import dev.axon.core.skills.canServeWithoutModel
 import dev.axon.core.storage.SqlSkillStore
 import dev.axon.core.storage.SqlTraceStore
 import kotlinx.coroutines.Dispatchers
@@ -239,6 +241,7 @@ class AxonAgent(private val context: Context) {
     suspend fun run(
         goal: Goal,
         goalReached: (suspend (CompactState) -> Boolean)? = null,
+        config: RunConfig = RunConfig.DEFAULT,
     ): Result<TaskResult> = withContext(Dispatchers.Default) {
         runCatching {
             check(isServiceEnabled) { "accessibility service is not enabled" }
@@ -246,8 +249,13 @@ class AxonAgent(private val context: Context) {
             // The model is required to PLAN, not to REPLAY. A goal a compiled
             // skill can serve runs with `engine == null`, and `AxonRuntime`
             // refuses to fall through to planning without one.
+            //
+            // The cold arm (§14.3, E24c) is the exception: it declines to consult
+            // the store, so a matching skill is no longer evidence that the model
+            // can be skipped. Checking `canReplay` here would let a cold run
+            // start without a planner and fail three frames deeper.
             val eng = engine
-            if (eng == null && skills.match(goal) == null) {
+            if (eng == null && (!config.skillReplay || skills.match(goal) == null)) {
                 error("model not loaded")
             }
 
@@ -297,8 +305,17 @@ class AxonAgent(private val context: Context) {
                 goalReached = oracle,
             )
 
-            _state.value = _state.value.copy(running = true, status = "running: ${goal.utterance}")
-            val outcome: RunOutcome = runtime.execute(goal)
+            _state.value = _state.value.copy(
+                running = true,
+                status = "running: ${goal.utterance}" +
+                    if (config.skillReplay) "" else " [${config.id}: cold]",
+            )
+            // Logged, not just applied. `RunConfig.of` falls back to the shipping
+            // configuration on an unrecognised arm id, and a silent fallback in a
+            // measurement harness is how an experiment ends up reporting the
+            // wrong arm's numbers under the right arm's name.
+            Log.i(TAG, "run '${goal.utterance}' under config ${config.id} (skillReplay=${config.skillReplay})")
+            val outcome: RunOutcome = runtime.execute(goal, config)
             val result = outcome.result
 
             _state.value = _state.value.copy(
@@ -323,7 +340,7 @@ class AxonAgent(private val context: Context) {
     }
 
     /**
-     * Can this goal be served without the model? (E22d)
+     * Can this goal be served without the model? (E22d, extended by E24d)
      *
      * Lets the caller skip a ~40-second GGUF load for a task a compiled skill
      * already handles. Measured: replaying "open whatsapp" took 42.8 s wall
@@ -332,7 +349,12 @@ class AxonAgent(private val context: Context) {
      * invisible to the person holding the phone.
      */
     suspend fun canReplay(goal: Goal): Boolean = withContext(Dispatchers.IO) {
-        runCatching { skills.match(goal) != null }.getOrDefault(false)
+        // The predicate itself lives in `:core` (E24d), where a test can reach
+        // it. It asked only `match()` here until the E24c control run exposed
+        // the gap: a compound goal never matches one skill by construction, so
+        // the gateway loaded the model and the runtime then composed the task
+        // for free — 4.36 s of an 8.35 s wait, for a model nothing consulted.
+        runCatching { skills.canServeWithoutModel(goal) }.getOrDefault(false)
     }
 
     /**
