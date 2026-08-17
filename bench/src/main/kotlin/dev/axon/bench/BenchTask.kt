@@ -152,6 +152,23 @@ enum class Perturbation {
  * removes exactly that feature. If each arm were its own runtime, a difference
  * between A and B would be attributable to any of the differences between two
  * programs; here it is attributable to the grammar flag.
+ *
+ * ## Which of these can currently run on the phone
+ *
+ * This type describes the matrix. It does not, by itself, make an arm runnable —
+ * something has to actually turn the mechanism off in the system under test, and
+ * the three switches have three different states:
+ *
+ * | switch | device path | measured |
+ * |---|---|---|
+ * | `grammar` | `ConstrainedPlanner(constrained = false)`, driven by the instrumented acceptance test | **yes** — E4, E4b |
+ * | `skillReplay` | [dev.axon.core.runtime.RunConfig.COLD], via the gateway's `config` extra | **yes** — E24c |
+ * | `verifier` | none yet | no |
+ *
+ * Stated here because an ablation type that lists five arms reads as five
+ * runnable arms. Two of the three switches have a device path; the verifier arm
+ * is a gap, and naming it is cheaper than a reader discovering it from a table
+ * with an empty row.
  */
 @Serializable
 data class AblationConfig(

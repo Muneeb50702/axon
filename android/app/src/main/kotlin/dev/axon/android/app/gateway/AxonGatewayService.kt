@@ -14,6 +14,7 @@ import dev.axon.android.app.AxonAgent
 import dev.axon.android.app.R
 import dev.axon.core.executor.ConfirmationReason
 import dev.axon.core.model.Goal
+import dev.axon.core.runtime.RunConfig
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -91,7 +92,11 @@ class AxonGatewayService : LifecycleService() {
 
             ACTION_RUN -> {
                 val utterance = intent.getStringExtra(EXTRA_GOAL).orEmpty()
-                if (utterance.isNotBlank()) startTask(utterance)
+                // §14.3's arm, defaulting to the shipping configuration. The
+                // only caller that ever passes it is a measurement harness over
+                // adb; a user tapping "run" gets D and cannot get anything else.
+                val config = RunConfig.of(intent.getStringExtra(EXTRA_CONFIG))
+                if (utterance.isNotBlank()) startTask(utterance, config)
             }
 
             // §16: the user's answer to an irreversible action. Delivered as a
@@ -110,7 +115,7 @@ class AxonGatewayService : LifecycleService() {
         return START_NOT_STICKY
     }
 
-    private fun startTask(utterance: String) {
+    private fun startTask(utterance: String, config: RunConfig = RunConfig.DEFAULT) {
         if (currentTask?.isActive == true) {
             Log.w(TAG, "a task is already running; ignoring '$utterance'")
             return
@@ -158,7 +163,11 @@ class AxonGatewayService : LifecycleService() {
             // the runtime and as something the person holding the phone
             // experiences.
             val goal = Goal(utterance, stepBudget = 6)
-            val replayable = a.canReplay(goal)
+            // The cold arm declines to consult the store, so a matching skill no
+            // longer means the model can be skipped — it means the opposite: the
+            // run is about to plan something it already knows, which is the whole
+            // measurement (E24c).
+            val replayable = config.skillReplay && a.canReplay(goal)
 
             if (!replayable && !a.isModelLoaded) {
                 update("loading model…")
@@ -174,7 +183,7 @@ class AxonGatewayService : LifecycleService() {
             // per planning step on this hardware, a generous budget means a task
             // that has gone wrong keeps going wrong for ten minutes while the
             // user watches. Better to escalate early and let them redirect.
-            val result = a.run(goal)
+            val result = a.run(goal, config = config)
 
             result
                 .onSuccess { update("${it.outcome} — ${it.steps.size} steps, ${it.totalMs / 1000}s") }
@@ -305,6 +314,16 @@ class AxonGatewayService : LifecycleService() {
         const val ACTION_DENY = "dev.axon.action.DENY"
         const val ACTION_STOP = "dev.axon.action.STOP"
         const val EXTRA_GOAL = "goal"
+
+        /**
+         * The §14.3 ablation arm, for measurement only (E24c).
+         *
+         * Absent means the shipping configuration. Nothing in the UI sets it and
+         * nothing should: the arms exist so an experiment can turn one of AXON's
+         * mechanisms off and measure the difference, not so a user can run a
+         * degraded agent without being told they are.
+         */
+        const val EXTRA_CONFIG = "config"
 
         /**
          * Start a task from anywhere — the app UI, a quick-settings tile, or

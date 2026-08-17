@@ -82,7 +82,7 @@ public class AxonRuntime(
      * @return the result plus which path served it, so §14.2 can report LLM
      *   calls by path — the number that makes C1′ a measurement.
      */
-    public suspend fun execute(goal: Goal): RunOutcome {
+    public suspend fun execute(goal: Goal, config: RunConfig = RunConfig.DEFAULT): RunOutcome {
         val replayer = SkillReplayer(
             driver = driver,
             executor = executor,
@@ -92,36 +92,43 @@ public class AxonRuntime(
             planner = planner,
         )
 
-        // ---- COMPOSE, if every part of a compound goal is already known ------
-        //
-        // Tried before the single-skill match because a compound goal will not
-        // match one skill anyway, and after it would mean planning the whole
-        // thing first. E24: nine steps of cold planning is ~9 minutes on this
-        // hardware — past the ~7-minute ceiling the OEM power manager allows
-        // (E6) — so a compound task is not slow here, it is impossible. Composed
-        // from known skills it costs milliseconds.
-        SkillComposer(skills).plan(goal)?.let { composed ->
-            val outcome = runComposed(composed, replayer)
-            if (outcome != null) return outcome
-            // A composed run that failed part-way falls through to the planner
-            // with the *original* goal, for the same reason a failed single
-            // replay does: the skills were compiled against a UI that has since
-            // changed, and the planner can still do the task, slowly.
-        }
-
-        // ---- REPLAY, if a skill matches --------------------------------------
-        skills.match(goal)?.let { match ->
-            val replay = replayer.replay(match.skill, goal, match.params)
-            skills.recordReplay(match.skill.manifest.id, replay.repairedSteps > 0)
-
-            if (replay.result.outcome == TaskOutcome.SUCCESS) {
-                return RunOutcome(replay.result, replay.path, compiled = null)
+        // Both reuse branches are gated by one flag (§14.3, E24c). The cold arm
+        // skips them without touching the store, so measuring what a task costs
+        // unlearned never costs the user what the phone already learned.
+        if (config.skillReplay) {
+            // ---- COMPOSE, if every part of a compound goal is already known --
+            //
+            // Tried before the single-skill match because a compound goal will
+            // not match one skill anyway, and after it would mean planning the
+            // whole thing first. E24: nine steps of cold planning is ~9 minutes
+            // on this hardware — past the ~7-minute ceiling the OEM power
+            // manager allows (E6) — so a compound task is not slow here, it is
+            // impossible. Composed from known skills it costs milliseconds.
+            SkillComposer(skills).plan(goal)?.let { composed ->
+                val outcome = runComposed(composed, replayer)
+                if (outcome != null) return outcome
+                // A composed run that failed part-way falls through to the
+                // planner with the *original* goal, for the same reason a failed
+                // single replay does: the skills were compiled against a UI that
+                // has since changed, and the planner can still do the task,
+                // slowly.
             }
 
-            // A failed replay falls through to a cold plan rather than giving up.
-            // The skill was compiled against a UI that has since changed, and the
-            // planner can still do the task — slowly. §17 frames drift as
-            // something to recover from, not something that breaks the feature.
+            // ---- REPLAY, if a skill matches ---------------------------------
+            skills.match(goal)?.let { match ->
+                val replay = replayer.replay(match.skill, goal, match.params)
+                skills.recordReplay(match.skill.manifest.id, replay.repairedSteps > 0)
+
+                if (replay.result.outcome == TaskOutcome.SUCCESS) {
+                    return RunOutcome(replay.result, replay.path, compiled = null)
+                }
+
+                // A failed replay falls through to a cold plan rather than giving
+                // up. The skill was compiled against a UI that has since changed,
+                // and the planner can still do the task — slowly. §17 frames
+                // drift as something to recover from, not something that breaks
+                // the feature.
+            }
         }
 
         // ---- PLAN -----------------------------------------------------------
@@ -130,8 +137,13 @@ public class AxonRuntime(
         // replay failed. With no planner there is nothing further to try, and
         // saying so plainly beats a null-pointer three frames down.
         val planner = planner ?: error(
-            "no skill matched '${goal.utterance}' and no planner is available — " +
-                "the model must be loaded to plan",
+            if (!config.skillReplay) {
+                "config '${config.id}' plans from scratch and no planner is available — " +
+                    "the cold arm needs the model loaded even for a goal a skill could serve"
+            } else {
+                "no skill matched '${goal.utterance}' and no planner is available — " +
+                    "the model must be loaded to plan"
+            },
         )
 
         val runtime = DefaultAgentRuntime(
@@ -144,7 +156,13 @@ public class AxonRuntime(
         val result = runtime.execute(goal)
 
         // ---- record, and maybe learn ----------------------------------------
-        val trace = recorder.record(result)
+        //
+        // Stamped with the arm that produced it. A cold-arm trace is a genuine
+        // record of a real run and belongs in the audit log like any other — but
+        // a reader comparing latencies later must be able to tell it apart from a
+        // run that had the store available, or the arm's cost silently pollutes
+        // the shipping configuration's numbers.
+        val trace = recorder.record(result, config.id)
         traces.append(trace)
 
         var compiled: String? = null
