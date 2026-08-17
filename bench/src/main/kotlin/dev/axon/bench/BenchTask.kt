@@ -63,6 +63,26 @@ data class BenchTask(
     @SerialName("required_apps") val requiredApps: List<String> = emptyList(),
 
     /**
+     * Does completing this task cross §16's confirmation gate?
+     *
+     * True for tasks that place a call, send a message, spend money or delete
+     * data — the irreversible set, which AXON refuses to perform without the
+     * user explicitly approving *that particular act*.
+     *
+     * Recorded per task rather than discovered at run time because it changes
+     * what a result means. A benchmark cannot answer a confirmation prompt, so
+     * these tasks can only be scored with the gate opened
+     * (`ConfirmationGate.ALLOW_FOR_TESTING`), and a results table that mixes
+     * gated and ungated tasks without saying which is which is reporting a
+     * system that is not the one users get.
+     *
+     * The honest consequence: **`requiresConfirmation` tasks measure the agent's
+     * competence, not its behaviour in the field**, where a human is in the loop
+     * for exactly these. Both numbers are worth having; conflating them is not.
+     */
+    @SerialName("requires_confirmation") val requiresConfirmation: Boolean = false,
+
+    /**
      * Perturbation applied, for robustness variants (§14.1).
      *
      * `null` on the base task. A variant shares its parent's oracle and differs
