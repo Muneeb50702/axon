@@ -53,9 +53,15 @@ Three rules this repository holds itself to, each learned the hard way:
 
 ## Status
 
-**Phase 1 working.** Gemma 3 1B Q4_K_M emits schema-valid, grammar-constrained
-actions fully offline on a TECNO Camon 20 (Helio G85) at ~60 s per planning step.
-See [`docs/PHASE1.md`](docs/PHASE1.md).
+**The learning loop runs on a phone.** Gemma 3 1B Q4_K_M plans a task fully
+offline on a TECNO Camon 20 (Helio G85), and the second time the same task is
+asked it replays with **zero model calls** — across restarts, and reachable
+through any of nine phrasings in two languages.
+
+Measured on that device: `open whatsapp` costs 66 s cold and **2.3 s replayed**
+end to end (E22d); a compound goal naming two learned skills runs with **0 model
+calls** (E24b); a learned skill survives `force-stop` and rehydrates in 39 ms
+(E22b).
 
 | phase | scope | state |
 |---|---|---|
@@ -63,11 +69,16 @@ See [`docs/PHASE1.md`](docs/PHASE1.md).
 | 1 | llama.cpp JNI, mmap load, GBNF sampler, thermal telemetry | ✅ working |
 | 2 | AccessibilityDriver, perception, executor + precondition gate | ✅ done |
 | 3 | Planner in the loop, end-to-end PLAN path | ✅ running on device |
-| 4 | Verifier + self-healing — **C2** | |
-| 5 | Skill compiler + replay — **C1′** | ✅ done, E17 measured (8,407×), replay confirmed on device |
-| 6 | Gateway, capability sandbox, SQLite persistence, second client | ◐ gateway + adb client + §11 storage done |
-| 7 | AXON-Bench + ablation matrix — **C3/C5** | |
+| 4 | Verifier + self-healing — **C2** | ◐ verifier + per-step repair done; recovery rate unmeasured (E9) |
+| 5 | Skill compiler + replay — **C1′** | ✅ done, replay confirmed on device (E17, E22d, E23) |
+| 6 | Gateway, SQLite persistence, §16 confirmation + audit UI | ✅ done (D11, E22, E28) |
+| 7 | AXON-Bench + ablation matrix — **C3/C5** | ◐ corpus, metrics and harness built; arms not yet run |
 | 8 | Hardening, thesis, defence | |
+
+**235 tests, 0 failures, none needing a device.** Everything above the
+`DeviceDriver` seam — grammar, gate, verifier, compiler, replay, composition,
+skill health, the §16 confirmation policy and the whole benchmark scoring path —
+is exercised on the JVM in CI.
 
 ## Contributions
 
