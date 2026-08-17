@@ -226,7 +226,11 @@ class SkillCompilerTest {
         }
         override suspend fun assert(condition: PostCondition) =
             PostConditionEvaluator.evaluate(condition, observe())
-        override fun capabilities() = setOf(Capability.UI_GESTURE)
+        // Declares what it simulates. §7.10 is enforced per action now, so a
+        // driver that claims only UI_GESTURE correctly refuses launch_app.
+        override fun capabilities() = setOf(
+            Capability.UI_OBSERVE, Capability.UI_GESTURE, Capability.APP_LAUNCH,
+        )
         override val deviceFamily = "fake/test"
     }
 

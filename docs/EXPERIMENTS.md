@@ -1400,6 +1400,85 @@ than calibrated. E27b is a robustness-tier run measuring how often skills
 actually break and whether retirement fires when it should - the same run that
 would settle E26.
 
+---
+
+## E29 — A safety claim the code did not back
+
+*2026-08-17 - found by auditing the README against the source - 7 unit tests*
+
+### The claim
+
+The README has said, since Phase 0:
+
+> **Per-skill revocable capabilities.** Nothing runs a capability it did not
+> declare and receive.
+
+It was enforced **at skill-install time and nowhere else**. `SkillStore.install()`
+compared a manifest's declared capabilities against the granted set and returned
+`NeedsCapabilities`; after that, nothing checked again.
+
+Three holes followed:
+
+1. **The PLAN path has no skill.** A freshly planned action has no manifest to
+   have declared anything, so every action AXON took *before* learning a task —
+   which is every action on a task's first run — was ungated.
+2. **`PreconditionFailure.CapabilityDenied` was never constructed.** The failure
+   existed in the type system and was unreachable from any code path. Grepping
+   for its construction returned nothing.
+3. **The shipped configuration granted nothing.** `SqlSkillStore` takes
+   `granted: Set<Capability> = emptySet()` and the app passed no argument, so on
+   the only build that runs on a phone the grant set was empty and no behaviour
+   differed.
+
+A safety property checked at install and not at use is not enforced. It is a
+comment.
+
+### What it took to make true
+
+`CapabilityPolicy` maps every action to the capability it requires, and the
+executor checks before dispatch — on both paths, since it sits in the executor
+rather than in the skill store. The mapping is an exhaustive `when`, so a new
+`DeviceAction` variant will not compile until it declares what it needs; a `when`
+with an `else` would silently give every future action the weakest requirement
+and ship a new capability ungated.
+
+Two questions are kept apart, because their remedies are unrelated:
+
+| question | source | failure |
+|---|---|---|
+| *can the device do this?* | `DeviceDriver.capabilities()` | `Unsupported` — no permission screen will help |
+| *may AXON do this?* | the grant set | `NotGranted` — the user can grant it |
+
+Collapsing them would mean a capability the OS happens to expose is one AXON may
+use, which is exactly the reasoning that makes an accessibility-API agent
+indistinguishable from the stalkerware built on the same substrate (§6.3).
+
+The check runs **before** the precondition gate. "You may not do this at all"
+outranks "the thing you named is not on screen", and checking the gate first
+would report the wrong reason — sending a user to hunt for a missing button when
+the real answer is that AXON was never allowed to tap.
+
+### What the fix immediately caught
+
+Five test drivers declared `setOf(Capability.UI_GESTURE)` while simulating app
+launches. Every one of them had been exercising `launch_app` against a driver
+that, by its own declaration, could not launch apps — and passing, because
+nothing checked. They now declare what they simulate.
+
+The real `AccessibilityDriver` declares all three, so no shipped behaviour
+changed. That is worth stating plainly: **this experiment fixed a hole, not a
+symptom.** Nothing had gone wrong yet.
+
+### Why it is recorded as an experiment rather than a bug fix
+
+Because the finding is not "a check was missing". It is that a **README claim
+survived nine phases, a decision log and a test suite without anyone noticing it
+was unbacked**, and it was found by reading the prose against the source rather
+than by any test failing. The same audit is worth repeating for the other §16
+claims before publication, and two of them — the audit log and per-skill
+revocation — turned out to be data with no user-facing surface, fixed the same
+day (E28).
+
 ## Open measurements
 
 Required before publication. Listed here so gaps are visible rather than
@@ -1429,3 +1508,4 @@ discovered late.
 | E24c | Compound goal on the PLAN path: does it complete at all? | needs device |
 | E26b | Does selector promotion reduce replay breakage under LAYOUT_VARIANT? | Phase 7 |
 | E27b | Skill-drift rate, and whether retirement thresholds fire correctly | Phase 7 |
+| — | Audit every remaining §16 and §6.3 claim against the source, as E29 did | before publication |

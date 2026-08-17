@@ -72,7 +72,7 @@ class DefaultExecutorTest {
             PostConditionEvaluator.evaluate(condition, observe())
 
         override fun capabilities(): Set<Capability> =
-            setOf(Capability.UI_OBSERVE, Capability.UI_GESTURE)
+            setOf(Capability.UI_OBSERVE, Capability.UI_GESTURE, Capability.APP_LAUNCH)
 
         override val deviceFamily: String = "fake/test"
     }

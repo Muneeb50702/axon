@@ -171,7 +171,9 @@ class ConfirmationPolicyTest {
         }
         override suspend fun assert(condition: PostCondition) =
             PostConditionEvaluator.evaluate(condition, screen)
-        override fun capabilities() = setOf(Capability.UI_GESTURE)
+        override fun capabilities() = setOf(
+            Capability.UI_OBSERVE, Capability.UI_GESTURE, Capability.APP_LAUNCH,
+        )
         override val deviceFamily = "fake/test"
     }
 

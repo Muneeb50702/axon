@@ -2,6 +2,7 @@ package dev.axon.core.executor
 
 import dev.axon.core.driver.DeviceDriver
 import dev.axon.core.model.ActResult
+import dev.axon.core.model.Capability
 import dev.axon.core.model.DeviceAction
 import dev.axon.core.model.MismatchKind
 import dev.axon.core.model.StepOutcome
@@ -65,6 +66,22 @@ public class DefaultExecutor(
     private val nowMs: () -> Long,
 
     /**
+     * What the user has allowed AXON to do (§7.10, E29).
+     *
+     * Checked before every dispatch, not only when a skill is installed. The
+     * README's claim — *"nothing runs a capability it did not declare and
+     * receive"* — was enforced at install and nowhere else, which left the PLAN
+     * path, where no skill exists to have declared anything, completely ungated.
+     *
+     * Defaults to [CapabilityPolicy.UI_ONLY]: enough to observe a screen, tap it
+     * and launch an app, and nothing from the domains §6.3 excludes. A default
+     * of "everything" would make the check ornamental; a default of "nothing"
+     * would make every existing caller silently stop working, which is how a
+     * safety check gets removed again a week later.
+     */
+    private val granted: Set<Capability> = CapabilityPolicy.UI_ONLY,
+
+    /**
      * Approves irreversible actions before they are dispatched (§16).
      *
      * Defaults to [ConfirmationGate.DENY]. An executor built without one cannot
@@ -99,6 +116,22 @@ public class DefaultExecutor(
         spent++
 
         // ---- gate 2: precondition ------------------------------------------
+        // ---- capability (§7.10) ----------------------------------------------
+        //
+        // Before the gate, because "you may not do this at all" outranks "the
+        // thing you named is not on screen": resolving a target for an action
+        // that is not permitted would do work to produce a more specific reason
+        // for refusing, and would report the wrong one.
+        when (val verdict = CapabilityPolicy.check(action, granted, driver.capabilities())) {
+            is CapabilityVerdict.NotGranted -> return rejected(
+                action, state, PreconditionFailure.CapabilityDenied(verdict.capability.id), started,
+            )
+            is CapabilityVerdict.Unsupported -> return rejected(
+                action, state, PreconditionFailure.CapabilityDenied(verdict.capability.id), started,
+            )
+            CapabilityVerdict.Allowed -> Unit
+        }
+
         val resolved = when (val gate = PreconditionGate.check(action, state)) {
             is GateResult.Rejected -> return rejected(action, state, gate.failure, started, gate)
             is GateResult.Allowed -> gate.node
