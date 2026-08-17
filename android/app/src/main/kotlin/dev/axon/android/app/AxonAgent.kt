@@ -251,11 +251,23 @@ class AxonAgent(private val context: Context) {
             // refuses to fall through to planning without one.
             //
             // The cold arm (§14.3, E24c) is the exception: it declines to consult
-            // the store, so a matching skill is no longer evidence that the model
-            // can be skipped. Checking `canReplay` here would let a cold run
-            // start without a planner and fail three frames deeper.
+            // the store, so a servable goal is no longer evidence that the model
+            // can be skipped. Checking reuse here would let a cold run start
+            // without a planner and fail three frames deeper.
+            //
+            // Uses the same `canServeWithoutModel` predicate as the gateway, and
+            // that is not tidiness — this line asked `match()` and was the
+            // **third** instance of E24d, found by fixing the second. With the
+            // gateway loading the model unconditionally, this guard could not
+            // fire; fixing E24d stopped the load and immediately exposed it, so
+            // every compound goal died here with "model not loaded".
+            //
+            // Three copies of one decision, three separate corrections. The
+            // decision now has exactly one implementation, in `:core`, with a
+            // test — which is the only version of this fix that ends the
+            // sequence rather than continuing it.
             val eng = engine
-            if (eng == null && (!config.skillReplay || skills.match(goal) == null)) {
+            if (eng == null && (!config.skillReplay || !skills.canServeWithoutModel(goal))) {
                 error("model not loaded")
             }
 

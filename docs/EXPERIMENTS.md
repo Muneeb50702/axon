@@ -1597,19 +1597,52 @@ and E24 updated only one of them. Every layer was individually correct
 throughout — the store matched correctly, the composer composed correctly, and
 the gateway's shortcut was correct *for the case it knew about*.
 
+### Fixed, and measured
+
+Same goal, fresh process, model not resident:
+
+| | before | after |
+|---|---|---|
+| end to end | 8.35 s | **2.30 s** |
+| model loads | 1 | **0** |
+| model calls | 0 | 0 |
+
+**3.6×**, from deleting a model load that was never needed. Counters advanced
+(`open_whatsapp` 10→11, `go_to_linkedin` 3→4), so the work was still done.
+
+### There was a third copy
+
+Fixing the gateway's shortcut immediately broke every compound goal with
+`IllegalStateException: model not loaded`.
+
+`AxonAgent.run` carries its own guard — *may this run start without a planner?* —
+and it also asked `skills.match()`. It could never fire before, because the
+gateway loaded the model unconditionally first. Removing the redundant load
+exposed it instantly.
+
+So the same decision existed in **three** places and was corrected three separate
+times: E22d (single skill), E24d (compound goal, gateway), and this (compound
+goal, agent guard). Each fix was locally right. None of them ended the sequence,
+because each left the decision duplicated.
+
 ### Where the fix went, and why that matters more than the fix
 
 The predicate now lives in `:core` as `SkillStore.canServeWithoutModel`, with
-`SkillReuseTest` asserting the compound case directly.
+`SkillReuseTest` asserting the compound case directly. All three call sites
+delegate to it.
 
 It previously lived in `:android:app`, **which has no test suite** — so nothing
-could have caught either regression except running the app and reading a
-timeline, which is exactly how both were in fact found. That is E29's lesson
-restated in a second domain: a mechanism whose correctness cannot be checked
-where it lives will eventually be wrong, and its being wrong will be invisible.
+could have caught any of the three regressions except running the app and reading
+a timeline, which is exactly how all three were in fact found. That is E29's
+lesson restated in a second domain: a mechanism whose correctness cannot be
+checked where it lives will eventually be wrong, and its being wrong will be
+invisible.
 
 The rule the test now pins down: the question is *"can **any** path serve this
-without the model?"*, and every path that can must be asked.
+without the model?"*, and every path that can must be asked. The structural gap
+it does *not* close is that `:android:app` still has no tests — which is why the
+predicate had to move rather than be fixed in place, and why the remaining logic
+there is worth auditing on the same grounds.
 
 ---
 
