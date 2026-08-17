@@ -560,3 +560,59 @@ a legitimate answer meaning "ambiguous", so every downstream behaviour looked
 plausible. A capability that can be switched off by the platform needs to say so.
 
 **How to reverse.** Delete the `<queries>` element. E21 stops working, loudly.
+
+---
+
+## D13 — An ablation arm is a property of the request, not of the stored state
+
+*Date: 2026-08-17. Affects: §14.3, E24c, and whether the evaluation is repeatable.*
+
+**The problem.** Every claim that a mechanism helps is a comparison against the
+same system with that mechanism off, and the comparison is the fragile part.
+E24b measured a compound goal composed from two learned skills at 0 model calls
+in 2.3 s. Answering *"what did that cost before it was learned"* required running
+the same goal with the skill store unavailable — and the three obvious ways to
+arrange that are all methodology failures:
+
+| approach | what it costs |
+|---|---|
+| delete the skills first | the user loses what the phone spent minutes learning, per measurement |
+| swap the database file | **tried, and it corrupted the app's live SQLite connection**; the run was voided and the store restored from backup |
+| use a different goal | changes two variables at once, so the result attributes to neither |
+
+The third is the subtle one. It looks clean and it is not: the cold and composed
+arms would then differ in the *goal* as well as the *path*, and §14.3's whole
+design principle is that turning a feature off removes exactly that feature.
+
+**Did.** `RunConfig`, passed to `AxonRuntime.execute` and reachable from the
+gateway as an intent extra. The skills stay exactly where they are; one run is
+told not to consult them.
+
+The load-bearing property is what happens *afterwards*: the store must be
+unchanged, and there is a test that asserts it. A measurement that consumes what
+it measures cannot be repeated, and an experiment that cannot be repeated is an
+anecdote. Verified on device — after two cold runs the counters read `10` and
+`3`, exactly as before.
+
+**What it deliberately does not do.** Suppress the trace. A cold run is a real
+run and belongs in the §16 audit log like any other, stamped with its arm so a
+reader can group it apart. Learning is what the cold path *produces*; the arm
+controls whether learning is *consumed*. Suppressing the recording would make the
+measurement destructive in the other direction — the phone would spend a full
+minute planning and be forbidden from keeping the result because an experiment
+was running.
+
+**One switch, not three.** §14.3 varies grammar, verifier and skill replay.
+`RunConfig` declares only skill replay, because that is the only one this adds a
+device path for: the grammar arm already has one via
+`ConstrainedPlanner(constrained = false)`, and the verifier arm has none.
+
+Declaring a field for the verifier would produce a config that *reads* as a
+working switch and silently changes nothing — which is precisely the E29 bug,
+where three §16 safety claims were false because a mechanism existed in the code
+with no path from it to the user, and every component behaved correctly in
+isolation throughout. The gap is recorded as an open measurement instead.
+
+**How to reverse.** Delete `RunConfig` and the `config` extra. The runtime
+returns to a single hard-wired configuration, and §14.3's `config` column goes
+back to holding one value forever.
