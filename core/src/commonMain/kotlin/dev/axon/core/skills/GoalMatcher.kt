@@ -1,6 +1,7 @@
 package dev.axon.core.skills
 
 import dev.axon.core.model.CompiledSkill
+import dev.axon.core.planner.AppIntent
 
 /**
  * Decides whether an utterance is served by a compiled skill, and with what
@@ -27,6 +28,13 @@ import dev.axon.core.model.CompiledSkill
  * headline claim is about *repeated* tasks — and fails cleanly on paraphrase
  * rather than guessing.
  *
+ * One class of paraphrase **is** handled, exactly rather than approximately:
+ * app-launch verbs (E23). "launch whatsapp", "kholo whatsapp" and "open
+ * whatsapp" are one request, and [AppIntent] already knew that, so both sides of
+ * the comparison are also tried in canonical form. It is a lookup against a verb
+ * list, not a similarity score — which is why it is safe on the replay path,
+ * where a false match acts on a live device before anything can intervene.
+ *
  * ## A false match is worse than a miss
  *
  * A miss costs a slower cold run. A false positive acts on the device before
@@ -42,14 +50,49 @@ public object GoalMatcher {
      * result is whichever the caller listed first, which is stable per store but
      * not meaningful — a corpus where that happens has redundant skills, and the
      * fix is to not compile them, not to invent a tiebreak here.
+     *
+     * ## Each side is tried in two forms (E23)
+     *
+     * Literal alignment means a skill learned from "open whatsapp" was missed by
+     * "launch whatsapp" — same request, same package, different verb — and the
+     * user paid a full cold plan for a task the system had already learned. The
+     * *system* was correct and the *person* could not tell why it was slow.
+     *
+     * Both the utterance and the stored pattern are therefore also tried in
+     * canonical form (see [AppIntent.canonical]), which collapses every launch
+     * verb AXON recognises — including the Roman-Urdu ones — onto one phrasing.
+     * Normalising both sides rather than only the incoming request means skills
+     * compiled before this existed match too, so nothing has to be recompiled.
+     *
+     * This does **not** make matching semantic. It handles verb paraphrase for
+     * app-launch goals, which is a narrow class chosen because the normalisation
+     * already existed and is exact — `AppIntent` reads the verb list, not a
+     * similarity score. "Text ammi that I'm coming" still misses a skill patterned
+     * "send {message} to {contact} on whatsapp"; that needs the embedding index
+     * §7.8 specifies, and remains a stated limitation.
      */
     public fun match(utterance: String, candidates: Iterable<CompiledSkill>): SkillMatch? {
         val normalised = utterance.lowercase().trim()
+        val canonical = AppIntent.canonical(normalised)
 
         var best: SkillMatch? = null
         for (skill in candidates) {
             val pattern = skill.manifest.goalPattern.lowercase()
-            val extracted = extract(normalised, pattern) ?: continue
+
+            // Literal first, so an exact match never pays for normalisation and
+            // a non-launch goal behaves exactly as it did before.
+            var form = normalised
+            var extracted = extract(normalised, pattern)
+
+            if (extracted == null && canonical != null) {
+                // The stored pattern is canonicalised too: a skill compiled from
+                // "launch whatsapp" must be reachable by "open whatsapp", not
+                // only the other way round.
+                val canonicalPattern = AppIntent.canonical(pattern) ?: pattern
+                extracted = extract(canonical, canonicalPattern)
+                if (extracted != null) form = canonical
+            }
+            if (extracted == null) continue
 
             // Every declared parameter must have been filled. A partial match
             // would replay a skill with a missing slot, and the replayer would
@@ -58,7 +101,7 @@ public object GoalMatcher {
             val required = skill.manifest.parameters.filter { it.required }.map { it.name }
             if (!extracted.keys.containsAll(required)) continue
 
-            val confidence = confidenceOf(normalised, extracted)
+            val confidence = confidenceOf(form, extracted)
             if (confidence < MIN_LITERAL_COVERAGE) continue
 
             if (best == null || confidence > best.confidence) {

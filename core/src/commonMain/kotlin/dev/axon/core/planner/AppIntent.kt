@@ -64,6 +64,30 @@ public object AppIntent {
     }
 
     /**
+     * One phrasing for every way of asking to open an app, or `null` (E23).
+     *
+     * `"launch whatsapp"`, `"kholo whatsapp"` and `"show me whatsapp"` all become
+     * `"open whatsapp"`. Used by [dev.axon.core.skills.GoalMatcher] so a skill
+     * learned under one verb is reachable by the others — before this, a user who
+     * taught AXON with "open" and later said "launch" paid a full cold plan for a
+     * task the system had already learned, and nothing explained why.
+     *
+     * The canonical verb is arbitrary; what matters is that compile and match
+     * agree on it, which they do because both call this.
+     *
+     * Exact rather than fuzzy: this reads [LAUNCH_VERBS], not a similarity score,
+     * so it can only ever collapse phrasings AXON already recognises. That makes
+     * it safe to apply on the replay path, where a false match would act on a
+     * live device — a verb this list does not contain simply falls through to the
+     * planner. Adding a synonym is a one-line change with a test, not a threshold
+     * to tune.
+     */
+    public fun canonical(goal: String): String? {
+        val name = appName(goal) ?: return null
+        return "open $name"
+    }
+
+    /**
      * A success oracle for a pure launch goal, or `null` if this is not one.
      *
      * ## Why the grammar collapse was only half of E21

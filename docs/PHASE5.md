@@ -168,7 +168,10 @@ match replays the wrong skill against a live device, so failing closed is right.
   "gets faster the more it is used" no longer carries the silent qualifier
   *within a session*. What remains unmeasured is the *cost* on device: hydrate
   time at launch, and whether the trace write at task end is perceptible (E22b).
-- **Matching is lexical** (§4 above).
+- **Matching is lexical** (§4 above) — with one exception: verb paraphrase for
+  app-launch goals is handled exactly, by canonicalising both sides against
+  `AppIntent`'s verb list (E23). "launch whatsapp", "kholo whatsapp" and "open
+  whatsapp" are one request. Genuine semantic paraphrase still misses.
 - **`preferStableSelector` is currently a no-op.** The selector-stability ordering
   is documented and ranked but the compiler does not yet rewrite selectors; it
   cannot invent a view id it never observed, and demoting coordinates when a

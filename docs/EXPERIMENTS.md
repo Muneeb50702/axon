@@ -965,6 +965,80 @@ expresses rather than a state the app has to remember to avoid.
 - Battery fell only 38→37% across the whole session, so thermal throttling
   (34 → 42 °C CPU) is the more likely confound in the wall-clock figures.
 
+---
+
+## E23 — One phrasing per intent: paraphrase matching for launch goals
+
+*2026-08-17 · TECNO Camon 20 · skill compiled from "open whatsapp" · battery 42% ·
+CPU 34 °C · 8 unit tests + on-device confirmation*
+
+### The gap
+
+Skill matching aligns an utterance against the stored `goal_pattern` literally.
+A skill learned from **"open whatsapp"** was therefore missed by **"launch
+whatsapp"** — same request, same package, different verb — and the user paid a
+full ~66 s cold plan for a task the system had already learned.
+
+That is the correct failure direction (a false match replays the wrong skill at a
+live device; a miss only costs time) but it is a bad experience for the reason
+that matters to C1′: *the system was right and the person could not tell why it
+was slow.* "It gets faster the more you use it" is not a property a user can rely
+on if it depends on them repeating themselves word for word.
+
+### The fix, and why it is not a similarity threshold
+
+`AppIntent` already collapsed nine launch verbs — including Roman-Urdu `kholo`
+and `khol` (§2.1) — onto one app name, for E21's grammar collapse. The
+normalisation existed; it was simply not wired into *matching*.
+
+Both sides of the comparison are now also tried in canonical form. Normalising
+the stored pattern as well as the incoming request means a skill compiled under
+any verb is reachable by any other, and nothing has to be recompiled.
+
+This is a **lookup against a verb list, not a similarity score**, which is what
+makes it safe on the replay path. A verb the list does not contain falls through
+to the planner. Adding a synonym is a one-line change with a test, not a
+threshold to tune — and there is no value of any parameter at which "open camera"
+starts matching a WhatsApp skill.
+
+### Measured on device
+
+The store held one skill, `open_whatsapp`, with `goal_pattern = "open whatsapp"`.
+Each request below used a **different verb** and was served by that skill:
+
+| utterance | WhatsApp foreground | model calls |
+|---|---|---|
+| `launch whatsapp` | (confirmed by counter) | **0** |
+| `kholo whatsapp` | **5,075 ms** | **0** |
+| `start whatsapp` | **1,379 ms** | **0** |
+
+`replay_count` went 2 → 5 and the trace table stayed at 6 rows — a clean replay
+returns early and records no trace, so an unchanged trace count *is* the evidence
+that no cold plan ran. The 5,075 ms figure includes a cold gateway-service start;
+1,379 ms is the warm case, and both include WhatsApp's own launch.
+
+### What is still not handled, and stays that way
+
+"Text ammi that I'm coming" against `send {message} to {contact} on whatsapp`
+still misses. That is genuine semantic matching and needs the embedding model and
+ANN index §7.8 specifies — a second model resident on a device that already
+struggles with one. It remains a stated limitation, not a gap this experiment
+quietly narrows.
+
+The scope claim is therefore precise: **verb paraphrase for app-launch goals,
+handled exactly.** One narrow class, chosen because an exact normalisation for it
+already existed.
+
+### Threats to validity
+
+- **One app, one skill.** Whether canonicalisation ever produces a *false* match
+  in a store with many launch skills is untested; the unit tests cover "open
+  camera" not matching a WhatsApp skill, which is the obvious case, not a
+  systematic one.
+- **Wall clock includes the gateway service start and WhatsApp's own launch**, so
+  these are upper bounds on AXON's cost, not measurements of it.
+- n = 1 per phrasing.
+
 ## Open measurements
 
 Required before publication. Listed here so gaps are visible rather than
@@ -990,3 +1064,4 @@ discovered late.
 | E22b | Persistence cost on device: hydrate at launch, trace-write at task end | needs device |
 | E22e | Hydrate cost with a realistic skill count (hundreds, not one) | needs a populated store |
 | E21d | Does the launch oracle generalise past app-launch goals? | Phase 7 |
+| E23b | False-match rate for canonicalisation across many launch skills | needs a populated store |
