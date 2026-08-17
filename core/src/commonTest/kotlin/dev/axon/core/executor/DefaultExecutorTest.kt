@@ -268,4 +268,74 @@ class DefaultExecutorTest {
         assertEquals(after.contentHash, outcome.stateHashAfter)
         assertTrue(outcome.stateHashBefore != outcome.stateHashAfter)
     }
+
+    // -------------------------------------------------- E25: slow app start --
+
+    @Test
+    fun `a launch verifies once the app arrives, even if it is slow`() = runTest {
+        // Measured on device: "go to LinkedIn" dispatched launch_app correctly,
+        // the verifier looked 500 ms later, saw LinkedIn's splash with an empty
+        // accessibility tree, and recorded "a screen with no readable elements"
+        // as a failure. The run then spent two more steps hunting for a LinkedIn
+        // element on the launcher and escalated after 203 seconds — having
+        // actually succeeded at step 0.
+        //
+        // WhatsApp starts fast enough to beat 500 ms, which is why every earlier
+        // experiment passed and only a heavier app exposed this.
+        val launching = UiTree("unknown", null, emptyList(), capturedAtMs = 0)
+        val arrived = UiTree(
+            "com.linkedin.android", "Feed",
+            listOf(button(0, "Feed")),
+            capturedAtMs = 0,
+        )
+
+        val driver = FakeDriver(mutableListOf(launching, launching, arrived))
+        val executor = DefaultExecutor(
+            driver, settleMs = 0, nowMs = System::currentTimeMillis,
+            confirmation = ConfirmationGate.ALLOW_FOR_TESTING,
+        )
+
+        val outcome = executor.run(
+            DeviceAction.LaunchApp(
+                "com.linkedin.android",
+                PostCondition(PostConditionType.APP_FOREGROUND, "com.linkedin.android"),
+            ),
+            launching,
+        )
+
+        assertTrue(outcome.postOk == true, "a slow launch that did arrive is a success")
+    }
+
+    @Test
+    fun `a populated screen that fails the condition fails promptly`() = runTest {
+        // The other half of E25, and the reason the retry predicate is narrow.
+        // Retrying on *any* unmet condition makes every genuine mismatch wait
+        // out the full deadline while re-observing the device — the first
+        // version did that and turned this suite from seconds into minutes.
+        //
+        // A screen that is up and simply wrong is a real mismatch; waiting
+        // cannot change it.
+        val wrong = screen(button(0, "Archive"))
+        val driver = FakeDriver(mutableListOf(wrong, wrong))
+        val executor = DefaultExecutor(
+            driver, settleMs = 0, nowMs = System::currentTimeMillis,
+            confirmation = ConfirmationGate.ALLOW_FOR_TESTING,
+        )
+
+        val startedAt = System.currentTimeMillis()
+        val outcome = executor.run(
+            DeviceAction.Tap(
+                Target(TargetBy.CONTENT_DESC, "Archive"),
+                PostCondition(PostConditionType.NODE_PRESENT, "Sent"),
+            ),
+            wrong,
+        )
+        val took = System.currentTimeMillis() - startedAt
+
+        assertTrue(outcome.postOk == false)
+        assertTrue(
+            took < DefaultExecutor.TRANSITION_TIMEOUT_MS,
+            "a genuine mismatch must not wait out the deadline; took ${took}ms",
+        )
+    }
 }
