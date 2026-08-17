@@ -55,7 +55,7 @@ This also makes SkillDroid an *asset*: it is a strong, published, cloud-model
 point on the same axis. A curve is more interesting when it has someone else's
 system on it.
 
-## 3. Four things that would be genuinely AXON's
+## 3. Five things that would be genuinely AXON's
 
 Each is achievable within the existing phase plan, and none is claimed by the
 work surveyed.
@@ -133,8 +133,61 @@ stability, and the interesting questions are empirical:
 - What fraction of a skill needs repair after a real app update?
 - Is repairing cheaper than recompiling, and at what divergence threshold?
 
-§14.1 already specifies `LAYOUT_VARIANT` as a robustness perturbation, so the
-benchmark hooks exist. This turns §17's "fragmentation is a risk" into a study.
+§14.1 already specifies `LAYOUT_VARIANT` as a robustness perturbation, and the
+corpus now ships it, so the benchmark hooks exist. This turns §17's
+"fragmentation is a risk" into a study.
+
+Two mechanisms are now implemented and **deliberately unclaimed** until that
+study runs: the compiler promotes a selector to the sturdiest handle the gate
+actually matched (E26), and the store retires a skill repaired more often than
+not (E27). Both are reasoned, neither is calibrated, and the honest position is
+that they are what the study would *evaluate* rather than results it has
+produced.
+
+### 3.5 Determinism as a design method, applied repeatedly
+
+The strongest thing to come out of building this is not any single mechanism. It
+is that **one rule was applied five times, to five different decisions**, and
+each time it removed a failure the model was demonstrably making:
+
+| decision | determined by | the failure it removed |
+|---|---|---|
+| what shape an action may take | GBNF grammar (C3) | malformed JSON at 1B |
+| which elements may be named | the live UI tree | naming something not on screen |
+| which app "open X" means | package lookup (E21) | **opening the dialer instead of WhatsApp** (E18b) |
+| when a launch goal is finished | foreground package (E21b) | launching WhatsApp six times and exhausting the budget |
+| where one task ends and the next begins | sequencing words (E24) | cold-planning a compound goal whose halves were already known |
+
+The rule: **where the correct answer is determinable without the model, do not
+ask the model.** Each application is individually small. Together they are a
+method, and the method — not the grammar, not the compiler — is what a reader
+can carry to a different agent on different hardware.
+
+It also predicts where the approach stops. Every row above is a decision with an
+exact answer available outside the model. Semantic selection among several
+plausible on-screen elements has no such structure, which is why E18b's failure
+class remains open and why matching genuine paraphrase still needs an embedding
+model (E23). **A method that says where it does not apply is worth more than one
+that claims to apply everywhere.**
+
+### 3.6 The deployment substrate is systematically more forgiving in development
+
+Three findings, arrived at independently, that are the same finding:
+
+| | the developer sees | the device does |
+|---|---|---|
+| SQL dialect (D11) | the newest SQLite | API 26 ships 3.18; the statement fails only in the field |
+| package visibility (E21c) | tests inject the app list | Android hides it; the resolver saw **zero** apps and E21 was **inert** |
+| schema creation (E26) | every test opens a fresh database | the phone's already exists; `create()` is skipped |
+
+Each passed every unit test. Each was invisible in CI. The claim is narrower and
+sharper than "test on real devices": **unit tests establish that code is correct,
+not that it is reachable** — and for an agent whose defences are structural, a
+defence switched off by the platform is indistinguishable, in every log the
+system produces, from a defence that is working and had nothing to do.
+
+Published on-device agent work is evaluated on flagships and emulators, which is
+exactly the environment in which all three of these are invisible.
 
 ## 4. What to stop claiming
 
@@ -144,6 +197,8 @@ benchmark hooks exist. This turns §17's "fragmentation is a risk" into a study.
 | "we built an on-device agent" | "we characterise the scaffolding-vs-scale trade on hardware that actually constrains you" |
 | "constrained decoding gives valid JSON" | "constrained decoding is what makes the sub-2B regime usable at all — measured" |
 | "our system achieves X%" | "here is the surface; here is where it breaks" |
+| "we handle natural-language variation" | "we collapse launch-verb paraphrase exactly, and decline to guess at the rest" (E23) |
+| "skills are robust to UI drift" | "we rank selectors by expected stability and retire skills that stop working — neither yet measured" (E26, E27) |
 
 ## 5. Why the cheap phone is the strategic asset
 
