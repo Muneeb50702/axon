@@ -203,4 +203,53 @@ data class CompiledSkill(
     /** Share of replays that ran fully deterministically. */
     val cleanReplayRate: Double
         get() = if (replayCount == 0) 0.0 else (replayCount - repairCount).toDouble() / replayCount
+
+    /**
+     * Is this skill still worth replaying, or has it rotted? (E27)
+     *
+     * [cleanReplayRate] was computed from the day the store existed and **read
+     * by nothing**. A skill whose target UI had drifted kept being replayed
+     * forever: every attempt failed its assertions, fell back to a cold plan,
+     * and paid the replay cost on top of the planning cost. The signal that
+     * would have caught it was sitting in the row.
+     *
+     * A skill judged unhealthy is skipped, so the goal takes the PLAN path —
+     * which records fresh traces and re-compiles the skill against the UI as it
+     * now is. That is the §17 drift-recovery story actually closing, rather than
+     * being available in principle.
+     *
+     * ## Why a minimum sample count
+     *
+     * One repaired replay out of one is a 0% clean rate and means almost
+     * nothing: a single transient — a notification, a slow frame — would retire
+     * a perfectly good skill and throw away the ~60 s × 2 that compiling it
+     * cost. Judgement waits for [MIN_REPLAYS_TO_JUDGE] observations.
+     *
+     * The asymmetry is the opposite of the matcher's, and deliberately so.
+     * There, a false match acts wrongly on a live device, so it fails towards
+     * doing nothing. Here the cost of being wrong in either direction is only
+     * time, so the threshold is set to avoid discarding hard-won skills.
+     */
+    val isHealthy: Boolean
+        get() = replayCount < MIN_REPLAYS_TO_JUDGE || cleanReplayRate >= MIN_CLEAN_REPLAY_RATE
+
+    public companion object {
+        /**
+         * Replays required before a skill can be judged unhealthy.
+         *
+         * Three, so a single transient failure cannot retire a skill: at 3
+         * replays the threshold below needs two of them to have needed repair.
+         */
+        public const val MIN_REPLAYS_TO_JUDGE: Int = 3
+
+        /**
+         * Clean-replay rate below which a skill is treated as drifted.
+         *
+         * 0.5 — repaired more often than not. Deliberately lenient, because a
+         * repaired replay still *succeeded*; it merely cost a planner call for
+         * one step. Retiring at the first sign of trouble would discard a skill
+         * that is still saving most of its steps.
+         */
+        public const val MIN_CLEAN_REPLAY_RATE: Double = 0.5
+    }
 }

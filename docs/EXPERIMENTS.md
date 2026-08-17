@@ -1305,6 +1305,73 @@ The measurement that would settle it (E26b) is a robustness-tier run using the
 skill replayed against a moved or restyled target, with and without promotion.
 Until then this is a plausible improvement, not a demonstrated one.
 
+---
+
+## E27 — Retiring skills that have rotted
+
+*2026-08-17 - implemented, 9 unit tests - **not yet measured on device***
+
+### A signal computed and read by nothing
+
+`CompiledSkill.cleanReplayRate` existed from the day the skill store did. Every
+replay updated it. **Nothing consumed it.**
+
+So a skill whose target UI had drifted was replayed forever: each attempt failed
+its assertions, fell back to a cold plan, and cost the replay attempt *on top of*
+the planning it was supposed to avoid. §17 frames drift as something to recover
+from, and the mechanism to notice it was sitting in the row, unread.
+
+A skill judged unhealthy is now skipped by the matcher, so the goal takes the
+PLAN path - which records fresh traces and re-compiles the skill against the UI
+as it now is. The drift-recovery loop closes.
+
+### Thresholds, and why they lean the opposite way to the matcher's
+
+| | value | reasoning |
+|---|---|---|
+| replays before judging | **3** | one repaired replay out of one is a 0% clean rate and means nothing; a single transient would discard the ~60 s x 2 that compiling cost |
+| clean-rate floor | **0.5** | repaired more often than not; a repaired replay still *succeeded* and merely cost one planner call, so retiring early throws away a skill still saving most of its steps |
+
+`GoalMatcher`'s thresholds fail towards doing nothing, because a false match acts
+wrongly on a live device. These fail towards *keeping* a skill, because being
+wrong in either direction costs only time. Same reasoning, opposite conclusion,
+and worth stating because a reviewer will otherwise read the leniency as
+carelessness.
+
+### The interaction bug this exposed
+
+D11 had `save()` preserve the replay counters across every write, reasoning that
+a skill with 41 replays had earned its clean-replay rate. That was right while
+the rate was **reported**. It stopped being right the moment the rate became
+**consumed**: a skill retired for a poor rate would inherit that rate onto its
+freshly repaired body and stay retired *permanently* - precisely when the system
+had just fixed itself.
+
+The rule is now split by what actually changed:
+
+- **same steps** - a refinement, which improves slots without altering the
+  script. Keep the history; it still describes the thing being stored.
+- **different steps** - a different script. Its predecessor's record says nothing
+  about it, so the history starts over.
+
+A test that asserted the old behaviour now asserts the new one, with the reversal
+explained rather than silently corrected.
+
+### A divergence found on the way
+
+The two stores disagreed. SQLite preserved counters on every save; the in-memory
+store silently reset them by overwriting. That is the class of difference
+`GoalMatcher` was extracted to prevent - **the tests use the in-memory store and
+the phone uses SQLite**, so a behavioural gap there means the tests are not
+testing what ships. Both now apply the same rule.
+
+### Not yet measured
+
+Skill drift has never been quantified here, so the thresholds are reasoned rather
+than calibrated. E27b is a robustness-tier run measuring how often skills
+actually break and whether retirement fires when it should - the same run that
+would settle E26.
+
 ## Open measurements
 
 Required before publication. Listed here so gaps are visible rather than
@@ -1333,3 +1400,4 @@ discovered late.
 | E23b | False-match rate for canonicalisation across many launch skills | needs a populated store |
 | E24c | Compound goal on the PLAN path: does it complete at all? | needs device |
 | E26b | Does selector promotion reduce replay breakage under LAYOUT_VARIANT? | Phase 7 |
+| E27b | Skill-drift rate, and whether retirement thresholds fire correctly | Phase 7 |

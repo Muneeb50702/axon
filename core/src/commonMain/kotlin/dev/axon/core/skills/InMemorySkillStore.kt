@@ -51,8 +51,29 @@ public class InMemorySkillStore(
         }
     }
 
+    /**
+     * Save, applying the same health rule as the SQLite store (E27).
+     *
+     * The two stores disagreed before this: SQLite preserved the replay
+     * counters across every save, and this one silently reset them by
+     * overwriting. That is the class of divergence `GoalMatcher` was extracted
+     * to prevent — the tests use this store and the phone uses the other, so a
+     * behavioural difference here means the tests are not testing what ships.
+     *
+     * The rule, stated once: **same steps, keep the history; different steps, it
+     * is a different script** and its predecessor's record says nothing about it.
+     */
     override suspend fun save(skill: CompiledSkill) {
-        skills[skill.manifest.id] = skill
+        val previous = skills[skill.manifest.id]
+        val bodyChanged = previous != null && previous.steps != skill.steps
+
+        skills[skill.manifest.id] = when {
+            previous == null || bodyChanged -> skill.copy(replayCount = 0, repairCount = 0)
+            else -> skill.copy(
+                replayCount = previous.replayCount,
+                repairCount = previous.repairCount,
+            )
+        }
     }
 
     override suspend fun all(): List<CompiledSkill> = skills.values.toList()

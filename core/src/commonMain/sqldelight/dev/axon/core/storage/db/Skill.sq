@@ -81,6 +81,20 @@ SET replay_count = replay_count + 1,
     repair_count = repair_count + :repaired
 WHERE id = :id;
 
+-- Clear a skill's replay history (E27).
+--
+-- Called when `save` replaced the body with a *different* one — a re-compile
+-- after UI drift, rather than a refinement. `save` deliberately preserves the
+-- counters (see above), which is right when the script is unchanged and wrong
+-- when it is not: a skill retired for a poor clean-replay rate would inherit
+-- that rate onto its replacement and stay retired forever, having just been
+-- repaired.
+--
+-- The two rules together: same steps, keep the history; different steps, it is a
+-- different script and its predecessor's record says nothing about it.
+resetHealth:
+UPDATE skill SET replay_count = 0, repair_count = 0 WHERE id = ?;
+
 delete:
 DELETE FROM skill WHERE id = ?;
 

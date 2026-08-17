@@ -77,6 +77,13 @@ public object GoalMatcher {
 
         var best: SkillMatch? = null
         for (skill in candidates) {
+            // E27: a skill repaired more often than not has drifted. Skipping it
+            // sends the goal to the planner, which records fresh traces and
+            // re-compiles against the UI as it now is. Replaying it instead
+            // would fail its assertions and fall back to planning anyway, having
+            // first paid the replay cost.
+            if (!skill.isHealthy) continue
+
             val pattern = skill.manifest.goalPattern.lowercase()
 
             // Literal first, so an exact match never pays for normalisation and

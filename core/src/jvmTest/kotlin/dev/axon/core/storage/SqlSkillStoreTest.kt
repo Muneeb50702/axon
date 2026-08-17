@@ -145,7 +145,7 @@ class SqlSkillStoreTest {
     }
 
     @Test
-    fun `recompiling after UI drift replaces the body but keeps the earned history`() = runTest {
+    fun `recompiling with a changed body resets the replay history`() = runTest {
         val store = openStore()
         store.save(skill())
         repeat(40) { store.recordReplay("whatsapp_send", neededRepair = false) }
@@ -169,12 +169,42 @@ class SqlSkillStoreTest {
             "Send message", loaded.steps.single().selector?.value,
             "the recompiled body must win",
         )
-        assertEquals(
-            41, loaded.replayCount,
-            "a skill that has replayed 41 times has earned that history; resetting it on " +
-                "every recompile would make cleanReplayRate measure only the time since the " +
-                "last drift",
-        )
+
+        // This assertion was the opposite until E27, and the reversal is the
+        // point rather than a correction of an error.
+        //
+        // The original rule preserved the counters on every save, reasoning that
+        // a skill with 41 replays had earned its clean-replay rate. That held
+        // while the rate was *reported*. It stopped holding the moment the rate
+        // became *consumed*: E27 retires a skill whose rate has collapsed, so
+        // inheriting a bad rate onto a freshly repaired body would retire the
+        // repair — permanently, and precisely when the system had just fixed
+        // itself.
+        //
+        // The rule is now split by what actually changed. A different script is a
+        // different script, and its predecessor's record says nothing about it.
+        assertEquals(0, loaded.replayCount, "a changed body starts its history over")
+        assertEquals(0, loaded.repairCount)
+        assertTrue(loaded.isHealthy, "a freshly repaired skill must be replayable again")
+    }
+
+    @Test
+    fun `refining without changing the body keeps the earned history`() = runTest {
+        // The other half of the rule. `refine()` improves a skill's slots from a
+        // second trace without altering the script, so its replay record still
+        // describes the thing being stored. Resetting here would make
+        // cleanReplayRate measure only the time since the last refinement, which
+        // is the objection the original design was right about.
+        val store = openStore()
+        store.save(skill())
+        repeat(10) { store.recordReplay("whatsapp_send", neededRepair = false) }
+        store.recordReplay("whatsapp_send", neededRepair = true)
+
+        // Same steps, different metadata.
+        store.save(skill().copy(sourceTraces = listOf("trace-1", "trace-2", "trace-3")))
+
+        val loaded = restart().all().single()
+        assertEquals(11, loaded.replayCount, "an unchanged script keeps its record")
         assertEquals(1, loaded.repairCount)
     }
 

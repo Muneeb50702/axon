@@ -158,4 +158,51 @@ class GoalMatcherTest {
             "a fully literal pattern covers more of the utterance than a slotted one",
         )
     }
+
+    // ------------------------------------------------------ E27: skill health --
+
+    @Test
+    fun `a skill repaired more often than not is skipped`() {
+        // cleanReplayRate was computed from the day the store existed and read by
+        // nothing. A skill whose target UI had drifted kept being replayed
+        // forever: every attempt failed its assertions, fell back to a cold plan,
+        // and paid the replay cost on top of the planning cost.
+        //
+        // Skipping it sends the goal to the planner, which records fresh traces
+        // and re-compiles against the UI as it now is — §17's drift recovery
+        // actually closing rather than being available in principle.
+        val rotted = openWhatsapp.copy(replayCount = 10, repairCount = 8)
+        assertNull(GoalMatcher.match("open whatsapp", listOf(rotted)))
+    }
+
+    @Test
+    fun `one bad replay does not retire a skill`() {
+        // A single transient — a notification, a slow frame — must not throw away
+        // the ~60 s x 2 that compiling a skill cost. Judgement waits for enough
+        // observations to mean something.
+        val unlucky = openWhatsapp.copy(replayCount = 1, repairCount = 1)
+        assertNotNull(
+            GoalMatcher.match("open whatsapp", listOf(unlucky)),
+            "0% clean over one replay is noise, not evidence of drift",
+        )
+    }
+
+    @Test
+    fun `a mostly-clean skill keeps being replayed`() {
+        // A repaired replay still *succeeded*; it merely cost a planner call for
+        // one step. Retiring at the first sign of trouble would discard a skill
+        // that is still saving most of its work.
+        val healthy = openWhatsapp.copy(replayCount = 10, repairCount = 4)
+        assertNotNull(GoalMatcher.match("open whatsapp", listOf(healthy)))
+    }
+
+    @Test
+    fun `a healthy skill is chosen over a rotted one for the same goal`() {
+        val rotted = skill("rotted", "open whatsapp").copy(replayCount = 10, repairCount = 9)
+        val healthy = skill("healthy", "open whatsapp").copy(replayCount = 10, repairCount = 0)
+
+        val match = GoalMatcher.match("open whatsapp", listOf(rotted, healthy))
+        assertNotNull(match)
+        assertEquals("healthy", match.skill.manifest.id)
+    }
 }

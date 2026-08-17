@@ -139,6 +139,16 @@ public class SqlSkillStore(
 
     override suspend fun save(skill: CompiledSkill) {
         val cached = skills()
+
+        // E27: did the *script* change, or only its slots?
+        //
+        // The SQL deliberately preserves the replay counters, which is right for
+        // a refinement and wrong for a re-compile after drift: a skill retired
+        // for a poor clean-replay rate would inherit that rate onto its
+        // replacement and stay retired forever, having just been repaired.
+        val previous = cached[skill.manifest.id]
+        val bodyChanged = previous != null && previous.steps != skill.steps
+
         db.skillQueries.save(
             id = skill.manifest.id,
             goalPattern = skill.manifest.goalPattern,
@@ -146,6 +156,7 @@ public class SqlSkillStore(
             compiledAtMs = nowMs(),
             json = AxonJson.compact.encodeToString(skill),
         )
+        if (bodyChanged) db.skillQueries.resetHealth(skill.manifest.id)
         // Re-read rather than trusting the argument's counters. `save` is also
         // the re-compile path after UI drift, and the SQL deliberately preserves
         // the existing replay/repair counts (Skill.sq) — so the object handed in
