@@ -13,13 +13,13 @@ import dev.axon.core.model.CompactState
 import dev.axon.core.model.Goal
 import dev.axon.core.model.TaskResult
 import dev.axon.core.memory.CompilationPolicy
-import dev.axon.core.memory.InMemoryTraceStore
 import dev.axon.core.memory.TraceRecorder
 import dev.axon.core.planner.ConstrainedPlanner
 import dev.axon.core.runtime.AxonRuntime
 import dev.axon.core.runtime.RunOutcome
 import dev.axon.core.skills.DefaultSkillCompiler
-import dev.axon.core.skills.InMemorySkillStore
+import dev.axon.core.storage.SqlSkillStore
+import dev.axon.core.storage.SqlTraceStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -58,14 +58,35 @@ class AxonAgent(private val context: Context) {
     private val driver = AccessibilityDriver(context.applicationContext)
 
     /**
-     * Skills and traces, shared across every task this process runs.
+     * Skills and traces, shared across every task — and now across every launch.
      *
-     * In-memory for now, so learning survives a task but not a restart. §11
-     * specifies SQLite, and that is what makes "the system gets faster the more
-     * it is used" true across days rather than within one session — Phase 6.
+     * SQLite per §11. Until this, learning survived a task but not a restart, so
+     * "the system gets faster the more it is used" carried a silent qualifier:
+     * *within one run of the app*. On this hardware that qualifier bites hard,
+     * because the process does not only end when the user closes it — the OEM
+     * power manager SIGKILLs sustained foreground compute after ~7 minutes (E6).
+     * A user who taught AXON a task and came back to it later found it had
+     * learned nothing.
      */
-    private val skills = InMemorySkillStore()
-    private val traces = InMemoryTraceStore()
+    private val db = AndroidAxonStorage.database(context)
+    private val skills = SqlSkillStore(db, nowMs = System::currentTimeMillis)
+    private val traces = SqlTraceStore(db)
+
+    /**
+     * Trace ids, unique across processes.
+     *
+     * Was a bare counter — `trace-0`, `trace-1` — which was harmless while the
+     * store was a list in memory and actively destructive the moment it became a
+     * table with `trace_id` as its primary key: every launch restarted at zero,
+     * so the second session's first trace silently overwrote the first
+     * session's, and the user's history would have quietly eaten itself one run
+     * at a time.
+     *
+     * The launch timestamp disambiguates sessions; the counter disambiguates
+     * within one. Not a UUID because `:core` has no UUID primitive and this
+     * needs no unguessability — only uniqueness.
+     */
+    private val sessionId = System.currentTimeMillis()
     private var traceSeq = 0
 
     private val _state = MutableStateFlow(AgentState())
@@ -170,7 +191,7 @@ class AxonAgent(private val context: Context) {
                 recorder = TraceRecorder(
                     device = driver.deviceFamily,
                     model = eng.modelId,
-                    newId = { "trace-${traceSeq++}" },
+                    newId = { "trace-$sessionId-${traceSeq++}" },
                     nowMs = System::currentTimeMillis,
                 ),
                 nowMs = System::currentTimeMillis,
@@ -203,6 +224,37 @@ class AxonAgent(private val context: Context) {
         }
     }
 
+    /**
+     * Load the count of remembered skills into [state].
+     *
+     * Called at launch, before anything else happens, because it is the one
+     * place a user can *see* that §11 works: open the app after a reboot and it
+     * already says how many tasks it knows. Reading it only after a run — as the
+     * UI did while the store was in memory, when there was nothing to read at
+     * startup — would hide the property from exactly the moment that
+     * demonstrates it.
+     *
+     * Cheap: one indexed `count(*)`, plus the lazy hydrate that the first task
+     * would have paid for anyway.
+     */
+    suspend fun refreshLearned() = withContext(Dispatchers.IO) {
+        runCatching { skills.all().size }
+            .onSuccess { _state.value = _state.value.copy(skillCount = it) }
+            .onFailure { Log.e(TAG, "could not read learned skills", it) }
+        Unit
+    }
+
+    /**
+     * Every action AXON has ever taken, newest first (§16).
+     *
+     * The audit log is a promise the project makes in its README and its safety
+     * section; before persistence it could only ever have shown the current
+     * session, which is not an audit log so much as a status display.
+     */
+    suspend fun auditLog(limit: Long = 200) = withContext(Dispatchers.IO) {
+        runCatching { traces.auditLog(limit) }.getOrDefault(emptyList())
+    }
+
     fun close() {
         engine?.close()
         engine = null
@@ -223,6 +275,6 @@ data class AgentState(
     /** PLAN, REPLAY or REPLAY_WITH_REPAIR — which path served the last run. */
     val lastPath: String? = null,
 
-    /** Skills learned so far this session. */
+    /** Skills AXON remembers — across launches, not just this session (§11). */
     val skillCount: Int = 0,
 )

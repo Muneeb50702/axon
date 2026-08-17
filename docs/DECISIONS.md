@@ -433,3 +433,90 @@ E2B used that freedom to emit pretty-printed JSON with newlines and **ran into
 its token cap mid-object**. Removing the whitespace slots forces compact output,
 cut a 1B generation from 43 to 38 tokens, and deletes that truncation mode
 entirely.
+
+---
+
+## D11 — SQLDelight for §11 persistence, with the driver outside `:core`
+
+*Date: 2026-08-17. Affects: §11, §7.7, §7.8, §16, and whether C1′ is a property
+of the system or of a session.*
+
+**Problem.** §11 specifies SQLite for traces, skills and permissions. Phase 5
+shipped with both stores in `mutableMap`s, so everything the learning loop did
+was correct and none of it lasted. "AXON gets faster the more it is used" carried
+an unstated qualifier — *within one run of the app* — and on this hardware that
+qualifier is severe, because the process does not only end when the user closes
+it: the OEM power manager SIGKILLs sustained foreground compute after ~7 minutes
+(E6). The 8,407× replay speedup (E17) was reachable only on a second attempt
+within a single sitting.
+
+The audit log had the same defect and it matters more. §16 promises the user can
+see everything the agent did. A log erased on every process death cannot answer
+"what did AXON do yesterday", and yesterday is when someone would think to look.
+
+**Constraint.** `:core` must acquire no Android dependency — that is C4, and it
+is compiler-enforced by the module graph rather than promised. Room and
+`SQLiteOpenHelper` are both androidx, so putting either in `:core` would breach
+the seam. Moving the schema into `:android:*` would breach it differently: the
+compile gate (§7.7) and the trace predicates are core logic, and they would
+become untestable without a device.
+
+**Did.** SQLDelight 2.3.2. Its *runtime* — schema, generated queries,
+`SqlDriver` — is pure Kotlin Multiplatform, so `:core` owns every table and every
+query while the driver, the only part that must know the platform, is injected
+from outside:
+
+| where | what |
+|---|---|
+| `:core` `commonMain/sqldelight` | schema, all queries — no Android |
+| `:core` `storage/` | `SqlSkillStore`, `SqlTraceStore`, adapters |
+| `:android:app` | `AndroidSqliteDriver` + `PRAGMA foreign_keys = ON` |
+| `:core` `jvmTest` | `JdbcSqliteDriver` against a real temp file |
+
+Exactly the shape already used for `DeviceDriver`, and it buys the same dividend:
+**the persistence claim is checkable in CI without the handset**, against the
+same generated code the phone runs. Fifteen tests, all on the JVM.
+
+### Three things the build caught that review would not have
+
+**1. The SQL dialect is fixed by `minSdk`, not by the toolchain.** SQLite is part
+of the Android platform, so the version available is the *device's*: API 26 ships
+SQLite 3.18, and `ON CONFLICT … DO UPDATE` did not arrive until 3.24 (API 30).
+The upsert in `Skill.sq` was written that way first and the 3.18 dialect rejected
+it. Left alone it would have compiled here, run correctly on the Camon 20 (API
+33), and crashed only in the field — on the low-end hardware AXON exists to
+serve. It is now written with `COALESCE` subqueries, which work on 3.18.
+
+This generalises past SQL and belongs with the C5 substrate findings: **on
+Android the developer's toolchain does not bound what the runtime supports.**
+
+**2. Restating a Kotlin predicate in SQL diverges silently.** The §7.7 compile
+gate — "has this goal succeeded cleanly twice?" — is a count over traces, and
+counting it in SQL is right, because it runs after every successful task and its
+cost otherwise grows with the user's whole history. But it was written
+`outcome = 'success'` while the enum persists as `SUCCESS`. The gate matched
+nothing, returned 0 for every goal forever, and **AXON would simply never have
+learned anything** — with no error anywhere, because "not enough clean runs yet"
+is a legitimate answer. Caught only because the test asserts the SQL predicate
+and `isCompilable` agree, rather than testing either alone.
+
+**3. Durable storage made a harmless counter destructive.** Trace ids were
+`trace-0`, `trace-1`, from a field that reset each launch. Fine for a list in
+memory; with `trace_id` as a primary key, every session's first trace silently
+overwrote the previous session's, and the user's history would have eaten itself
+one run at a time. Ids now carry the launch timestamp.
+
+**Cost.** One in-memory cache in `SqlSkillStore`, which is two places holding the
+same state and therefore a real risk. It is not premature: `match()` runs on the
+critical path of every task and needs whole `CompiledSkill` objects, so a
+read-through store would deserialise every skill on every request — tens of
+milliseconds on a Helio G85, against a **17 ms** replay (E17). A read-through
+store would spend longer deciding to replay than replaying, and would erode the
+headline number of the contribution it exists to support. Contained by writing to
+SQLite first and updating the map only after the write returns, so the surviving
+failure direction is a durable skill missing from memory, which fixes itself on
+next launch.
+
+**How to reverse.** `InMemorySkillStore` and `InMemoryTraceStore` still exist and
+still implement the same interfaces; the bench harness uses them. Swapping the
+two constructor lines in `AxonAgent` reverts the app.

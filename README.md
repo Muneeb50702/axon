@@ -18,7 +18,8 @@ its freedom smaller.
 | deterministic verifier | plausible actions that still failed — *wrong outcome* | UI-tree diff against a stated post-condition, no LLM |
 
 Verified traces are then **compiled into deterministic replayable skills**, so
-repeated tasks drop from *N* model calls to zero.
+repeated tasks drop from *N* model calls to zero — and persist in SQLite, so that
+holds across restarts rather than within a session (E22).
 
 ### Documentation
 
@@ -58,8 +59,8 @@ See [`docs/PHASE1.md`](docs/PHASE1.md).
 | 2 | AccessibilityDriver, perception, executor + precondition gate | ✅ done |
 | 3 | Planner in the loop, end-to-end PLAN path | ✅ running on device |
 | 4 | Verifier + self-healing — **C2** | |
-| 5 | Skill compiler + replay — **C1′** | ✅ core done, E17 pending |
-| 6 | Gateway, capability sandbox, second client | ◐ gateway + adb client done |
+| 5 | Skill compiler + replay — **C1′** | ✅ done, E17 measured (8,407×) |
+| 6 | Gateway, capability sandbox, SQLite persistence, second client | ◐ gateway + adb client + §11 storage done |
 | 7 | AXON-Bench + ablation matrix — **C3/C5** | |
 | 8 | Hardening, thesis, defence | |
 
@@ -171,6 +172,10 @@ promised in prose:
   `START_NOT_STICKY`, so a killed agent never silently restarts.
 - **Per-skill revocable capabilities.** Nothing runs a capability it did not
   declare and receive.
+- **An audit log that outlives the session.** Every action — including every
+  refusal — is a row the user can read and delete, in a database only this app
+  can open. A log erased on each process death could not answer "what did AXON do
+  yesterday", which is when someone would think to ask.
 - **Irreversible actions need confirmation.** A standing grant means "you may do
   this kind of thing", never "do this particular thing without showing me".
 

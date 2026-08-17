@@ -20,6 +20,14 @@ coroutines = "1.11.0"
 serialization = "1.11.0"
 datetime = "0.7.1"
 
+# --- Persistence (spec §11: "SQLite — traces, skills, permissions") ---
+# SQLDelight rather than Room or raw SQLiteOpenHelper, because its *runtime* is
+# pure Kotlin Multiplatform: :core can own the schema and the queries without
+# acquiring an Android dependency, and the same generated code runs against a
+# JVM driver in CI. Room and SQLiteOpenHelper are androidx, and putting either
+# in :core would breach the C4 seam. See D11.
+sqldelight = "2.3.2"
+
 # --- Android app ---
 composeBom = "2026.06.01"
 androidxCore = "1.17.0"
@@ -37,6 +45,12 @@ kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutine
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
 kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "datetime" }
+
+# The runtime is KMP with no Android dependency — safe for :core (D11).
+sqldelight-runtime = { module = "app.cash.sqldelight:runtime", version.ref = "sqldelight" }
+# Drivers ARE platform-specific and deliberately live outside :core.
+sqldelight-driver-android = { module = "app.cash.sqldelight:android-driver", version.ref = "sqldelight" }
+sqldelight-driver-jvm = { module = "app.cash.sqldelight:sqlite-driver", version.ref = "sqldelight" }
 
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidxCore" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidxActivity" }
@@ -62,3 +76,4 @@ kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }

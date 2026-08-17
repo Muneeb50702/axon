@@ -163,9 +163,11 @@ match replays the wrong skill against a live device, so failing closed is right.
 
 ## 5. Honest weaknesses
 
-- **Skills are in-memory.** Learning survives a task, not a restart. §11 specifies
-  SQLite; that is Phase 6, and until then "gets faster the more it is used" is
-  true within a session only.
+- ~~**Skills are in-memory.**~~ **Fixed** — SQLDelight-backed SQLite per §11
+  (D11, E22). Skills, traces and the §16 audit log now outlive the process, so
+  "gets faster the more it is used" no longer carries the silent qualifier
+  *within a session*. What remains unmeasured is the *cost* on device: hydrate
+  time at launch, and whether the trace write at task end is perceptible (E22b).
 - **Matching is lexical** (§4 above).
 - **`preferStableSelector` is currently a no-op.** The selector-stability ordering
   is documented and ranked but the compiler does not yet rewrite selectors; it

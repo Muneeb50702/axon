@@ -1,0 +1,34 @@
+-- Per-skill capability grants (spec §7.10, §11 "permissions", §16).
+--
+-- §16 draws a line this table exists to hold: a standing grant means "you may
+-- do this kind of thing", never "do this particular thing without showing me".
+-- So a grant is durable — the user should not re-answer the same question after
+-- every reboot — while the confirmation for an irreversible act is not stored
+-- here at all, and is asked every time. Nothing in this schema can express
+-- "always allow this call without asking", which is deliberate.
+--
+-- Grants are revocable (§16, "per-skill revocable capabilities"), and revoking
+-- is a DELETE rather than a flag so that a revoked capability leaves nothing
+-- behind that a later bug could read as still-granted.
+CREATE TABLE capability_grant (
+    skill_id      TEXT NOT NULL,
+    capability    TEXT NOT NULL,
+    granted_at_ms INTEGER NOT NULL,
+    PRIMARY KEY (skill_id, capability)
+);
+
+grant:
+INSERT OR REPLACE INTO capability_grant(skill_id, capability, granted_at_ms)
+VALUES (?, ?, ?);
+
+revoke:
+DELETE FROM capability_grant WHERE skill_id = ? AND capability = ?;
+
+revokeAllForSkill:
+DELETE FROM capability_grant WHERE skill_id = ?;
+
+selectForSkill:
+SELECT capability FROM capability_grant WHERE skill_id = ?;
+
+selectAllGrants:
+SELECT * FROM capability_grant ORDER BY granted_at_ms;

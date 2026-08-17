@@ -29,6 +29,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -107,6 +108,12 @@ private fun AxonApp(controller: AgentController, agent: AxonAgent) {
                 val scope = rememberCoroutineScope()
                 val context = LocalContext.current
                 val state by controller.state.collectAsState()
+
+                // Read what AXON already knows before the user does anything.
+                // With skills in SQLite this is non-zero on a fresh launch, and
+                // showing it at startup is what makes persistence visible
+                // rather than merely true.
+                LaunchedEffect(Unit) { agent.refreshLearned() }
 
                 var targetText by remember { mutableStateOf("") }
                 var goalText by remember { mutableStateOf("") }
@@ -320,7 +327,12 @@ private fun AxonApp(controller: AgentController, agent: AxonAgent) {
                             if (agentState.skillCount > 0) {
                                 Spacer(Modifier.height(6.dp))
                                 Text(
-                                    "${agentState.skillCount} skill(s) learned this session",
+                                    // "remembered", not "learned this session".
+                                    // Skills are in SQLite now (§11), so this
+                                    // count is non-zero at launch — which is the
+                                    // whole point, and the only part of C1′ a
+                                    // user can see without a stopwatch.
+                                    "${agentState.skillCount} skill(s) remembered · replay costs 0 model calls",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = Color(0xFF7DD3FC),
                                 )

@@ -722,6 +722,66 @@ a number bounded by something other than energy.
 
 ---
 
+---
+
+## E22 — Learning survives the process
+
+*2026-08-17 · SQLDelight 2.3.2 on real SQLite files · `core:jvmTest`, 15 tests ·
+no device required*
+
+E17 measured replay at **17 ms and 0 model calls** against a 142,917 ms cold
+plan. That number was real, and until this entry it was reachable only on a
+second attempt inside one run of the app, because both stores were `mutableMap`s.
+The process ending — which on this hardware happens without the user asking, as
+the OEM power manager SIGKILLs sustained foreground compute after ~7 minutes
+(E6) — took every learned skill with it.
+
+**What is asserted.** Every test opens a real SQLite file, writes, then *closes
+the driver entirely* and opens a new one before reading. An in-memory database
+would pass while testing nothing: the property is precisely that the data
+outlives the connection that wrote it.
+
+| property | assertion |
+|---|---|
+| skill survives restart | a saved skill still matches its goal after reopen |
+| body round-trips exactly | `assertEquals(original, loaded)` — selectors, assertions, bindings, provenance |
+| trace stays compilable | screen hashes survive shredding, so a reloaded trace can still be compiled |
+| counters accumulate | replay/repair counts persist and keep adding across three restarts |
+| recompile keeps history | 41 replays are not reset when a skill is recompiled after drift |
+| §16 erase cascades | deleting history leaves no orphaned actions |
+| corruption is contained | one unparseable skill body does not fail the load of the others |
+| SQL == Kotlin | the SQL clean-run gate agrees with `isCompilable` |
+
+The last row is the one that earned its place. See D11: written first as
+`outcome = 'success'` against an enum that persists as `SUCCESS`, the compile
+gate matched nothing and returned 0 for every goal forever — so **AXON would
+never have learned anything, silently**, because "not enough clean runs yet" is a
+legitimate answer that raises no error. Restating a Kotlin predicate in SQL is a
+real cost, and the mitigation is asserting the two agree rather than testing
+either alone.
+
+### What changes for the claim
+
+C1′ can now be stated without a qualifier. Before: *repeated tasks cost zero
+model calls, within a session.* After: **repeated tasks cost zero model calls.**
+
+It also makes the property visible rather than merely true — the app reads its
+skill count at launch, so opening AXON after a reboot shows what it already
+knows, before the user does anything. That is the only part of C1′ a person can
+see without a stopwatch.
+
+### Not yet measured
+
+- **On-device (E22b).** These are JVM tests against the same generated queries
+  the phone runs, which is C4's dividend and not a substitute for the device.
+  What is unmeasured is the *cost*: hydrate time at launch with a realistic skill
+  count, and whether writing a trace at task end is perceptible.
+- **Growth.** `trace_step` is unbounded by design. No retention policy exists and
+  none should be invented before the growth rate is known.
+- **Concurrency.** One database instance per process is enforced, but the
+  gateway service and the UI touching the store during a task is untested under
+  contention.
+
 ## Open measurements
 
 Required before publication. Listed here so gaps are visible rather than
@@ -744,3 +804,4 @@ discovered late.
 | E20 | Does a router model close the semantic-selection gap (E18b)? | Phase 3 |
 | E21b | On-device confirmation that E21 opens the right app | needs device |
 | E21 | Grammar restricted to launch_app when the goal names an app | Phase 3 |
+| E22b | Persistence cost on device: hydrate at launch, trace-write at task end | needs device |

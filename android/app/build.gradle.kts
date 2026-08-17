@@ -50,6 +50,10 @@ dependencies {
     implementation(project(":android:inference"))
 
     implementation(libs.kotlinx.coroutines.android)
+    // The SQLite driver lives here, not in :core — :core owns the schema and
+    // every query, and receives a driver from outside (D11). Same seam as
+    // DeviceDriver, and the reason the persistence tests run without a phone.
+    implementation(libs.sqldelight.driver.android)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.ktx)

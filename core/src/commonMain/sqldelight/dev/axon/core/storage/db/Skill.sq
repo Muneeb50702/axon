@@ -1,0 +1,88 @@
+-- Compiled skills (spec §11 "Persistence: SQLite — traces, skills, permissions").
+--
+-- This table is what turns C1′ from a within-session trick into a property of
+-- the system. Before it, AXON re-learned every task from scratch on each launch,
+-- so "repeated tasks cost zero model calls" held only until the process died.
+--
+-- ## Why the skill is a JSON blob with columns beside it
+--
+-- The skill body — steps, selectors, assertions, bindings — is stored as the
+-- same `CompiledSkill` JSON the compiler emits, rather than shredded across
+-- normalised tables. Shredding would buy queries nobody runs (no part of the
+-- system asks "which skills tap a node whose content-desc is X"), and would put
+-- a second, hand-maintained copy of §10.4's schema in SQL where it could drift
+-- from the Kotlin one. Round-tripping through the real serializer means a skill
+-- that survives a restart is byte-identical to the skill that was compiled.
+--
+-- The columns exist for the things that ARE queried or mutated:
+--   • goal_pattern    — inspected on every match, i.e. every single task
+--   • replay/repair   — incremented after every replay; rewriting the whole blob
+--                       to bump a counter is how JSON stores rot
+--   • device_family   — §17 says do not replay a trace recorded on another
+--                       device's layout, and that must be filterable
+--
+-- Where a column duplicates a JSON field, THE COLUMN IS AUTHORITATIVE and the
+-- hydrated object is corrected from it on read. Keeping both writable is how
+-- two sources of truth get created.
+CREATE TABLE skill (
+    id              TEXT NOT NULL PRIMARY KEY,
+    goal_pattern    TEXT NOT NULL,
+    device_family   TEXT,
+    replay_count    INTEGER AS kotlin.Int NOT NULL DEFAULT 0,
+    repair_count    INTEGER AS kotlin.Int NOT NULL DEFAULT 0,
+    compiled_at_ms  INTEGER NOT NULL,
+    json            TEXT NOT NULL
+);
+
+CREATE INDEX skill_device_family ON skill(device_family);
+
+-- Upsert, because `save()` serves both "freshly compiled" and "re-compiled
+-- after UI drift" (§9.2). On re-compile the body is replaced but the counters
+-- are NOT reset: a skill that has replayed 40 times and been repaired twice has
+-- earned a clean-replay rate, and discarding it on every recompile would make
+-- cleanReplayRate measure only the time since the last drift. Hence the
+-- self-referencing COALESCE subqueries, which read the current counters before
+-- the row is replaced.
+--
+-- ## Why this is not written as ON CONFLICT ... DO UPDATE
+--
+-- Because it would crash on the phones this project claims to target. SQLite is
+-- part of the Android platform, not a bundled library, so the dialect available
+-- is fixed by the *device's* API level: API 26 ships SQLite 3.18, and upsert
+-- syntax did not arrive until 3.24 (API 30). The build is configured for the
+-- 3.18 dialect for exactly this reason, and it rejected the upsert version of
+-- this statement — which would otherwise have compiled cleanly here, run
+-- correctly on the Camon 20 (API 33), and failed only in the field on the
+-- low-end hardware AXON exists to serve.
+--
+-- Generalises past SQL, and belongs with the C5 substrate findings: on Android,
+-- the developer's toolchain does not bound what the runtime supports. Verify
+-- against minSdk, not against the machine that built it.
+save:
+INSERT OR REPLACE INTO skill(id, goal_pattern, device_family, replay_count, repair_count, compiled_at_ms, json)
+VALUES (
+    :id, :goalPattern, :deviceFamily,
+    COALESCE((SELECT replay_count FROM skill WHERE id = :id), 0),
+    COALESCE((SELECT repair_count FROM skill WHERE id = :id), 0),
+    :compiledAtMs, :json
+);
+
+selectAll:
+SELECT * FROM skill ORDER BY compiled_at_ms;
+
+selectById:
+SELECT * FROM skill WHERE id = ?;
+
+-- Counters are bumped in place rather than read-modify-written from Kotlin, so
+-- two concurrent replays of the same skill cannot lose an increment.
+recordReplay:
+UPDATE skill
+SET replay_count = replay_count + 1,
+    repair_count = repair_count + :repaired
+WHERE id = :id;
+
+delete:
+DELETE FROM skill WHERE id = ?;
+
+countAll:
+SELECT count(*) FROM skill;

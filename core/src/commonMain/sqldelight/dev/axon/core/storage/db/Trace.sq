@@ -1,0 +1,188 @@
+-- Episodic traces and the §16 audit log (spec §7.8, §10.5, §11).
+--
+-- `TraceRecorder` already documents that a trace does three jobs — compiler
+-- input (C1′), evaluation record (C5), and audit log (§16) — and that they share
+-- one representation deliberately, so the audit trail cannot drift from what
+-- actually happened. This schema preserves that: there is no separate audit
+-- table, because a second write path is exactly the drift the recorder refuses.
+--
+-- ## Why steps are shredded when skills are not
+--
+-- `Skill.sq` keeps its body as JSON. Traces do not, and the difference is the
+-- queries each has to answer.
+--
+-- §16 requires that the user can see *every action the agent took*. That is a
+-- question about steps, not tasks: "what did AXON do to my phone today" spans
+-- many traces and wants a fraction of each. With steps inside a blob, answering
+-- it means deserialising every trace ever recorded and filtering in Kotlin —
+-- which is precisely the workload SQLite exists to avoid, and which gets slower
+-- for exactly the users who have most to audit.
+--
+-- The compilation policy has the same shape: "has this goal succeeded cleanly
+-- twice?" (§7.7, minCleanRuns = 2) is a count over traces, evaluated before
+-- every compile.
+--
+-- So: tasks and steps are both relational, and `trace_step` is the audit log.
+CREATE TABLE trace (
+    trace_id       TEXT NOT NULL PRIMARY KEY,
+    goal           TEXT NOT NULL,
+    outcome        TEXT NOT NULL,
+    llm_calls      INTEGER AS kotlin.Int NOT NULL,
+    total_ms       INTEGER NOT NULL,
+    started_at_ms  INTEGER NOT NULL,
+    device         TEXT NOT NULL,
+    model          TEXT NOT NULL,
+
+    -- Which §14.3 ablation arm produced this run, so one database can hold
+    -- every arm and the results table is a GROUP BY rather than a directory
+    -- convention that a reader has to trust.
+    config         TEXT NOT NULL,
+
+    -- Goal parameters, as JSON. Genuinely schemaless — slot names are whatever
+    -- the skill declared — and never queried by key.
+    params_json    TEXT NOT NULL,
+
+    -- Set once the trace has been frozen into a skill, so the compiler can tell
+    -- "not yet compiled" from "already compiled" without re-deriving it.
+    compiled_skill_id TEXT
+);
+
+CREATE INDEX trace_goal ON trace(goal);
+CREATE INDEX trace_started_at ON trace(started_at_ms);
+
+-- One row per action the agent took or refused to take. THIS IS THE AUDIT LOG.
+--
+-- Nothing is filtered on the way in. A rejected action, a failed assertion and
+-- a heal all belong here even though none will ever be compiled — an audit log
+-- that contains only successes is not an audit log, and a §16 refusal is one of
+-- the more important things a user might want to see evidence of.
+CREATE TABLE trace_step (
+    trace_id     TEXT NOT NULL REFERENCES trace(trace_id) ON DELETE CASCADE,
+    step         INTEGER AS kotlin.Int NOT NULL,
+
+    -- The DeviceAction, as the same JSON §10.1 defines. Stored whole because
+    -- the action IS the audit record; a summarised column would be a second
+    -- account of the event, and the two would eventually disagree.
+    action_json  TEXT NOT NULL,
+
+    -- Denormalised out of action_json purely so the audit view can be filtered
+    -- and grouped ("show me every call AXON placed") without deserialising.
+    action_type  TEXT NOT NULL,
+
+    pre_ok       INTEGER AS kotlin.Boolean NOT NULL,
+    -- NOT NULL, matching `TraceStep.postOk`. The executor's `StepOutcome.postOk`
+    -- IS nullable — null meaning the post-condition was never evaluated because
+    -- the action was gated before it ran — but `TraceRecorder` deliberately
+    -- collapses that to `false` on the way in, on the grounds that a trace step
+    -- is a claim about what happened and nothing happened. Re-widening the
+    -- column here would invent a third state the model cannot represent, and the
+    -- round-trip would then be lossy in the other direction.
+    post_ok      INTEGER AS kotlin.Boolean NOT NULL,
+    healed       INTEGER AS kotlin.Boolean NOT NULL,
+    latency_ms   INTEGER NOT NULL,
+
+    -- Zero on the replay path — this column IS the C1′ measurement, per step.
+    llm_calls    INTEGER AS kotlin.Int NOT NULL DEFAULT 0,
+
+    -- Screen hashes, so a trace reloaded after a restart can still be compiled:
+    -- the compiler uses them to tell a genuine loop from legitimate repetition.
+    -- Dropping them would make persistence quietly lose compilability.
+    state_hash_before INTEGER AS kotlin.Int NOT NULL DEFAULT 0,
+    state_hash_after  INTEGER AS kotlin.Int NOT NULL DEFAULT 0,
+
+    -- The verifier's explanation when the step failed, and the §16 refusal
+    -- reason when it was blocked. "Why did AXON not do that" is the question an
+    -- audit log most needs to answer, so it is a column rather than a derived
+    -- string reconstructed at display time.
+    failure_reason TEXT,
+
+    PRIMARY KEY (trace_id, step)
+);
+
+CREATE INDEX trace_step_action_type ON trace_step(action_type);
+
+-- ---------------------------------------------------------------- traces ----
+
+insertTrace:
+INSERT OR REPLACE INTO trace(
+    trace_id, goal, outcome, llm_calls, total_ms, started_at_ms,
+    device, model, config, params_json, compiled_skill_id
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectTrace:
+SELECT * FROM trace WHERE trace_id = ?;
+
+selectAllTraces:
+SELECT * FROM trace ORDER BY started_at_ms DESC;
+
+selectTracesForGoal:
+SELECT * FROM trace WHERE goal = ? ORDER BY started_at_ms;
+
+-- The §7.7 gate: how many times has this exact goal completed with no heals and
+-- no failed assertions? Counted in SQL rather than by loading traces, because it
+-- runs before every compile and grows with the user's whole history.
+--
+-- 'SUCCESS' is `TaskOutcome.SUCCESS.name`, and the case is load-bearing. Written
+-- as 'success' first, which matched nothing: the gate returned 0 for every goal
+-- forever, so no trace was ever compiled and AXON simply never learned — with no
+-- error anywhere, because "not enough clean runs yet" is a legitimate answer.
+-- The cost of restating a Kotlin predicate in SQL is exactly this class of
+-- silent divergence, which is why `SqlTraceStoreTest` asserts the two agree
+-- rather than testing either alone.
+countCleanTracesForGoal:
+SELECT count(*) FROM trace t
+WHERE t.goal = :goal
+  AND t.outcome = 'SUCCESS'
+  AND NOT EXISTS (
+      SELECT 1 FROM trace_step s
+      WHERE s.trace_id = t.trace_id
+        AND (s.healed = 1 OR s.pre_ok = 0 OR s.post_ok = 0)
+  );
+
+markCompiled:
+UPDATE trace SET compiled_skill_id = :skillId WHERE trace_id = :traceId;
+
+countTraces:
+SELECT count(*) FROM trace;
+
+-- ------------------------------------------------------------------ steps ----
+
+insertStep:
+INSERT OR REPLACE INTO trace_step(
+    trace_id, step, action_json, action_type,
+    pre_ok, post_ok, healed, latency_ms, llm_calls,
+    state_hash_before, state_hash_after, failure_reason
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectSteps:
+SELECT * FROM trace_step WHERE trace_id = ? ORDER BY step;
+
+-- §16's user-facing audit view: every action, newest first, with the goal it
+-- served. Paged, because this table is unbounded by design and a UI that reads
+-- all of it works fine on day one and not on day two hundred.
+auditLog:
+SELECT s.trace_id, s.step, s.action_json, s.action_type,
+       s.pre_ok, s.post_ok, s.healed, s.latency_ms, s.failure_reason,
+       t.goal, t.started_at_ms, t.outcome
+FROM trace_step s
+JOIN trace t ON t.trace_id = s.trace_id
+ORDER BY t.started_at_ms DESC, s.step
+LIMIT :limit OFFSET :offset;
+
+auditLogSince:
+SELECT s.trace_id, s.step, s.action_json, s.action_type,
+       s.pre_ok, s.post_ok, s.healed, s.latency_ms, s.failure_reason,
+       t.goal, t.started_at_ms, t.outcome
+FROM trace_step s
+JOIN trace t ON t.trace_id = s.trace_id
+WHERE t.started_at_ms >= :sinceMs
+ORDER BY t.started_at_ms DESC, s.step;
+
+-- §16 also requires the user be able to *delete* their history. Cascades to
+-- steps via the FK, provided foreign keys are on — which the driver factory
+-- enforces, since SQLite defaults them OFF per-connection.
+deleteTrace:
+DELETE FROM trace WHERE trace_id = ?;
+
+deleteAllTraces:
+DELETE FROM trace;
