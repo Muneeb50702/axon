@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -50,6 +51,7 @@ import dev.axon.core.model.Target
 import dev.axon.core.model.TargetBy
 import dev.axon.core.model.VerifyResult
 import dev.axon.core.planner.describeForPrompt
+import dev.axon.core.storage.AuditEntry
 import kotlinx.coroutines.launch
 
 /**
@@ -396,6 +398,69 @@ private fun AxonApp(controller: AgentController, agent: AxonAgent) {
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+
+                    // ---- §16 audit log ---------------------------------
+                    //
+                    // The promise is "the user can see everything the agent
+                    // did", and until this screen existed the data was queryable
+                    // and shown to nobody. A log only the developer can read is
+                    // not accountability.
+                    //
+                    // Loaded on demand rather than at launch: the table is
+                    // unbounded by design, and a startup that reads all of it
+                    // works on day one and not on day two hundred.
+                    Spacer(Modifier.height(24.dp))
+                    var audit by remember { mutableStateOf<List<AuditEntry>>(emptyList()) }
+                    var auditShown by remember { mutableStateOf(false) }
+
+                    OutlinedButton(
+                        onClick = {
+                            scope.launch {
+                                audit = agent.auditLog(limit = 50)
+                                auditShown = true
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(if (auditShown) "Refresh activity log" else "What has AXON done?") }
+
+                    if (auditShown) {
+                        Spacer(Modifier.height(8.dp))
+                        if (audit.isEmpty()) {
+                            Text(
+                                "Nothing yet.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        audit.forEach { entry ->
+                            Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+                                // Refusals are the entries most worth seeing, so
+                                // they are marked rather than filtered out. An
+                                // audit log of successes only is not an audit
+                                // log — and a §16 refusal is precisely the thing
+                                // a user would want evidence of.
+                                Text(
+                                    if (entry.wasPerformed) "✓" else "✕",
+                                    color = if (entry.wasPerformed) Color(0xFF86EFAC) else Color(0xFFFCA5A5),
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        "${entry.actionType} · ${entry.goal}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                    entry.failureReason?.let {
+                                        Text(
+                                            it,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
 
                     Spacer(Modifier.height(24.dp))
                     Text(
