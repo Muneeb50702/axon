@@ -131,9 +131,23 @@ replay costs zero model calls. That gap is widest on exactly the low-end hardwar
 the work targets — on a flagship, compilation is a nicety; here it is the
 difference between a six-step task taking six minutes and taking milliseconds.
 
-*Evidence: **E10** — not yet measured. Phase 5. A cloud-baseline comparison on
-the same tasks would let this section quantify what offline operation costs, and
-is the single most valuable addition available.*
+**Lead with the compound-goal result, not the ratio.** A speedup invites the
+reader to discount it — 2.3 s versus 66 s is impressive and still just *faster*.
+The compound goal is categorical: composed from two learned skills it completes
+in **2.3 s with zero model calls**; on the cold path, given **277 s and three
+model calls, it never attempted the task at all** — it tapped an unrelated
+element, tapped Back, and escalated (**E24c**). One arm of that comparison has no
+latency to report, because it does not finish.
+
+This is also the section's best defence against "so it is a cache". A cache makes
+a slow thing fast. Here the uncached path does not produce the answer, because a
+compound goal loses both the app-identity oracle and the completion test (§3.5's
+contrapositive), so the small model is handed exactly the decision it is worst at.
+
+*Evidence: **E17**, **E22d**, **E24b/c/d**. **E10** — the full cold-vs-replay
+matrix across the corpus — remains unmeasured. A cloud-baseline comparison on the
+same tasks would let this section quantify what offline operation costs, and is
+the single most valuable addition available.*
 
 ### 7. Evaluation
 
@@ -159,9 +173,16 @@ of the paper's more transferable contributions. Published on-device agent work
 is generally evaluated on flagships or emulators and therefore does not
 encounter:
 
-- **OEM power managers terminate sustained foreground compute.** SIGKILL after
-  ~7 minutes, `adj:0`, ~3.9 GB free. Long-horizon on-device autonomy must be
-  checkpointed to survive the platform, not merely the workload. **E6**
+- **OEM power managers terminate sustained foreground compute** — and not on a
+  timer. The signal is `SIGKILL` from `system_server`, delivered in *batches*
+  (seven processes in five seconds in one observed sweep), against a process that
+  is by a wide margin the device's largest tenant: **1.08 GB PSS while planning,
+  51 MB idle**, on a phone already 1.6 GB into swap before the agent starts.
+  Survival is therefore a matter of whether a sweep lands during the run, not of
+  how long the run is — two runs of the same task died at 75 s and finished at
+  277 s. E6's "~7 minutes" is the interval sweeps happened to fall at in one
+  session, not a ceiling. Long-horizon on-device autonomy must be checkpointed to
+  survive the *platform*, not merely the workload. **E6, E6b**
 - **Throughput degrades within a run as the device heats.** Cases completed per
   window fell 4 → 1 at 44 °C. **E6**
 - **Unoptimised native builds are silently plausible.** An `-O0` ggml build
