@@ -2393,6 +2393,64 @@ faster than this table suggests.
 
 ---
 
+## E22e — Persistence cost at a realistic store size
+
+*2026-08-17 · JVM against real SQLite · `HydrateScaleTest`*
+
+E22b measured hydrate at **39 ms with one skill** on the phone and called it
+negligible. One skill measures fixed overhead, not a store. Two costs grow with
+what the user has taught AXON, and one of them is on the request path:
+
+| cost | paid | why it matters |
+|---|---|---|
+| hydrate | once per process, at launch | deserialises *every* stored skill |
+| **match** | **every request** | linear scan over every skill, against a 2.3 s replay |
+
+### Result
+
+| skills | hydrate (µs) | match (µs, warm cache) |
+|---|---|---|
+| 1 | 678 | 5 |
+| 10 | 1,461 | 6 |
+| 100 | 2,257 | 8 |
+| 250 | 3,345 | 19 |
+| **500** | **5,941** | **40** |
+
+Both are linear; neither is a problem. Match is unambiguously a linear scan
+(100 → 500 skills is 8 → 40 µs, exactly 5×) and **40 µs against a 2.3 s replay is
+0.002% of the run.** Hydrate at 500 skills is 5.9 ms on this JVM; scaled by
+E22b's device figure it stays well inside a launch nobody notices.
+
+So the answer to E22e is *"no action needed"* — recorded because "we assumed it
+was fine" and "we checked and it is fine" are different states, and only one of
+them survives a reviewer asking.
+
+### The absolute numbers do not transfer, and that is not a formality
+
+A desktop JVM with a warm page cache is not a Helio G85 on a phone already
+1.6 GB into swap (E6b). What transfers is the **shape**. This project has three
+documented cases of assuming otherwise (D11, E21c, E26), so the assertions in
+the test bound *growth* rather than milliseconds.
+
+### The first version of this measurement was wrong
+
+It reported match at **75 µs for one skill and 81 µs for five hundred** — 8% more
+work for 500× the data, which is impossible for a linear scan. JIT warmup was
+dominating the small cases and the flat line was an artefact.
+
+It was caught only because a linear scan *cannot* be flat, so the result
+contradicted a known property of the code. Nothing failed; the test passed and
+printed a table that looked like evidence. The fix is a warmup phase, best-of-5
+for the un-averageable hydrate, and a probe goal naming the **last**-inserted
+skill so the scan cannot short-circuit — plus an assertion that match at 500 is
+*slower* than at 10, which the original version would have failed.
+
+Third time this session a green result was green for the wrong reason (E22c,
+E31, this). The pattern is consistent: each was found by changing something
+underneath and noticing the number did not move the way the code says it must.
+
+---
+
 ## Open measurements
 
 Required before publication. Listed here so gaps are visible rather than
@@ -2416,7 +2474,6 @@ discovered late.
 | E21b | On-device confirmation that E21 opens the right app | needs device |
 | E21 | Grammar restricted to launch_app when the goal names an app | Phase 3 |
 | E22b | Persistence cost on device: hydrate at launch, trace-write at task end | needs device |
-| E22e | Hydrate cost with a realistic skill count (hundreds, not one) | needs a populated store |
 | E21d | Does the launch oracle generalise past app-launch goals? | Phase 7 |
 | E23b | False-match rate for canonicalisation across many launch skills | needs a populated store |
 | E24e | Repeat E24c from the launcher, not a dense app screen, to separate "compound goals lose the oracle" from "that screen was distracting" | needs device |
