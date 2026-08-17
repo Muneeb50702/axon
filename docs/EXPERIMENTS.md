@@ -2218,6 +2218,90 @@ end to end, and a real skill's several steps each carry this risk independently.
 
 ---
 
+## E9 — Recovery rate (C2), and the metric that was pinned at zero
+
+*2026-08-17 · JVM, no device · 4 tests · artefact:
+`bench/results/E9-recovery-study.txt` · `./gradlew :bench:recoveryStudy`*
+
+Recovery rate is C2's headline number and the reason Phase 4 has been marked
+partial since it was built. Trying to measure it found why nobody had.
+
+### The metric could not have been non-zero
+
+`TaskResult.healsSucceeded` carries this documentation:
+
+```kotlin
+/** Heal attempts that recovered the run. Numerator of recovery rate. */
+val healsSucceeded: Int = 0,
+```
+
+It was declared in `DefaultAgentRuntime.execute`, initialised to zero, threaded
+through **all six** return paths, and written into every `TaskResult` — and
+**never incremented anywhere**. C2's headline metric was structurally pinned at
+0%: the mechanism could work perfectly and the number would have reported that it
+never worked at all.
+
+This is E29's shape exactly — `PreconditionFailure.CapabilityDenied` was likewise
+expressible in the type system and never constructed — and it was found the same
+way, by trying to *use* the thing rather than by any test. Nothing failed while it
+was broken, because nothing asserted a non-zero recovery.
+
+Had Phase 4 been "completed" by computing the metric from this field, the paper
+would have reported **0% recovery** and concluded that deterministic
+verification plus self-healing does not work.
+
+### What can be measured without a phone, and what cannot
+
+The device recovery rate is a product of two things: whether the **loop** detects
+the failure, hands the planner usable context and executes a correction, and
+whether the **1B model** proposes something better when asked. Only the first
+runs on the JVM. So E9 reports bounds rather than a number:
+
+| failure mode | cause | `RECOVERING` planner | `STUBBORN` planner |
+|---|---|---|---|
+| stale selector | app updated, recorded label gone | SUCCESS, 1 heal, healed | ESCALATED, 3 heals, **1 step** |
+| dead tap | disabled control or overlay | SUCCESS, 1 heal, healed | ESCALATED, 3 heals, **1 step** |
+| wrong expectation | assertion no action could satisfy | SUCCESS, 1 heal, healed | ESCALATED, 3 heals, **1 step** |
+
+| | |
+|---|---|
+| **ceiling** — the loop with a cooperating planner | **100%** |
+| **floor** — the loop with E18's measured planner | **0%, and it terminates** |
+
+The three modes are chosen to exercise different defences: the gate refuses the
+stale selector *before* dispatch, the verifier catches the dead tap *after* it,
+and the wrong expectation fails an assertion no action could satisfy. A loop that
+recovered from only one of them would still report a flattering ceiling.
+
+### Reading the ceiling honestly
+
+100% with a planner that always proposes the right action is close to tautology,
+and it should be read as *"the loop adds no loss of its own"* rather than as a
+performance result. What it genuinely checks is that the loop detects the failure,
+builds a context, executes the correction, **and counts it** — and the fourth of
+those was broken until this experiment ran.
+
+### The floor is the more interesting number
+
+`STUBBORN` reproduces E18's measured behaviour: a 1B planner re-proposing an
+identical rejected action, ignoring a failure context that names it. The run
+**escalates after 3 heal attempts having dispatched 1 step.**
+
+That gap — 3 attempts, 1 dispatch — is the repetition guard working, and it is
+what turns an unrecoverable situation into a clean exit rather than a device
+being poked repeatedly. It is also the first quantified evidence for the guard,
+which E32 had just re-keyed.
+
+### Still needed
+
+**E9b: the device number.** It lies between these bounds and depends entirely on
+how often the 1B model proposes a workable alternative — which E18 suggests is
+not often. That measurement needs the phone and the corpus, and until it exists
+**no recovery rate should be quoted for AXON as a system**; these are properties
+of the control loop.
+
+---
+
 ## Open measurements
 
 Required before publication. Listed here so gaps are visible rather than
@@ -2227,7 +2311,7 @@ discovered late.
 |---|---|---|
 | E7 | Full 500-generation valid-action rate (§13) | Phase 3 speedups; ~14 h chunked otherwise |
 | E8 | Task success rate, configs A–E (§14.3) | Phase 3 (control loop) |
-| E9 | Recovery rate on injected failures (§14.2, C2) | Phase 4 |
+| E9b | The **device** recovery rate — E9 bounds the loop at 100%/0%; the real number depends on how often the 1B model proposes a workable alternative | needs device + corpus |
 | E10 | LLM calls and latency, cold vs replay (O4, C1) | Phase 5 |
 | E11 | Vulkan vs CPU backend (D8) | Vulkan build + Mali driver validation |
 | E12 | Quantisation vs task success (Q4_K_M / Q3_K_M / Q2_K_XL) | Phase 7 |

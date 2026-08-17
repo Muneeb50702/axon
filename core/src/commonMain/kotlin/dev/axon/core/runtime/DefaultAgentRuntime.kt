@@ -139,6 +139,24 @@ public class DefaultAgentRuntime(
             steps += outcome
 
             if (outcome.committed) {
+                // A step that commits while a failure context is live *is* a
+                // successful heal — **E9**.
+                //
+                // `healsSucceeded` was declared, initialised to zero, threaded
+                // through every return of this function and written into
+                // `TaskResult`, and **never incremented anywhere**. Its own
+                // documentation calls it "the numerator of recovery rate", so
+                // C2's headline metric was structurally pinned at 0%: the
+                // mechanism could work perfectly and the number would have
+                // reported that it never did.
+                //
+                // Same shape as E29's `PreconditionFailure.CapabilityDenied` —
+                // a value expressible in the type system and unreachable in
+                // practice — and found the same way, by trying to measure the
+                // thing rather than by any test. Nothing failed, because
+                // nothing asserted a non-zero recovery.
+                if (failure != null) healsSucceeded++
+
                 // Progress. Clear the failure context so the next step is planned
                 // from the world rather than from an old grievance.
                 failure = null

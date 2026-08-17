@@ -75,7 +75,7 @@ faster; it is the difference between a task that completes and one that does not
 | 1 | llama.cpp JNI, mmap load, GBNF sampler, thermal telemetry | ✅ working |
 | 2 | AccessibilityDriver, perception, executor + precondition gate | ✅ done |
 | 3 | Planner in the loop, end-to-end PLAN path | ✅ running on device |
-| 4 | Verifier + self-healing — **C2** | ◐ verifier + per-step repair done; recovery rate unmeasured (E9) |
+| 4 | Verifier + self-healing — **C2** | ◐ verifier + per-step repair done; the control loop's recovery is bounded at 100% / 0% (E9) — the **device** rate still needs the model (E9b) |
 | 5 | Skill compiler + replay — **C1′** | ✅ done, replay confirmed on device (E17, E22d, E23) |
 | 6 | Gateway, SQLite persistence, §16 confirmation + audit UI | ✅ done (D11, E22, E28) |
 | 7 | AXON-Bench + ablation matrix — **C3/C5** | ◐ corpus, metrics and harness built; grammar + skill-replay switches have device paths (E4b, E24c), verifier switch does not; **the corpus has not been run through any arm** |

@@ -1,0 +1,22 @@
+E9 — RECOVERY RATE (C2), STRUCTURAL HALF
+======================================================================================
+failure mode        planner      outcome     heals   healed   steps  llm
+--------------------------------------------------------------------------------------
+stale_selector      recovering   SUCCESS     1       1        2      2
+stale_selector      stubborn     ESCALATED   3       0        1      3
+dead_tap            recovering   SUCCESS     1       1        2      2
+dead_tap            stubborn     ESCALATED   3       0        1      3
+wrong_expectation   recovering   SUCCESS     1       1        2      2
+wrong_expectation   stubborn     ESCALATED   3       0        1      3
+======================================================================================
+
+  ceiling (RECOVERING planner) : 100.0%
+  floor   (STUBBORN planner)   : 0.0%
+
+These are BOUNDS, not the device number. The ceiling is the recovery the
+loop permits when the model proposes a workable alternative; the floor is
+what happens when it repeats itself, which E18 measured a 1B planner doing
+three times in a row. The real rate depends on the model and needs a phone
+(E9b). What the floor shows is that a non-recovering planner ESCALATES
+rather than looping — the repetition guard converting a hang into an exit.
+

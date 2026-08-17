@@ -68,3 +68,16 @@ val driftStudy by tasks.registering(JavaExec::class) {
     mainClass.set("dev.axon.bench.RunSkillDriftStudy")
     classpath = sourceSets["main"].runtimeClasspath
 }
+
+/**
+ * E9 — the C2 recovery-rate measurement, structural half.
+ *
+ * Reports a ceiling and a floor rather than one number, because the device rate
+ * is a product of the loop and the model and only the loop runs here.
+ */
+val recoveryStudy by tasks.registering(JavaExec::class) {
+    group = "verification"
+    description = "Print E9: what recovery rate does the control loop permit?"
+    mainClass.set("dev.axon.bench.RunRecoveryStudy")
+    classpath = sourceSets["main"].runtimeClasspath
+}
