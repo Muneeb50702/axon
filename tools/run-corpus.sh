@@ -33,7 +33,11 @@ CORPUS="${CORPUS:-bench/build/axon-corpus.json}"
 CONFIG="${CONFIG:-D}"
 TIER="${TIER:-core}"
 ONLY="${ONLY:-}"
-TIMEOUT_S="${TIMEOUT_S:-420}"
+# The agent's own step budget is 6, and a planning step costs ~75 s on this
+# hardware (E2), so a task that legitimately uses its whole budget needs ~450 s.
+# A shorter host timeout would record "TIMEOUT" for a run that was still working
+# and turn a measurement of the agent into a measurement of this script.
+TIMEOUT_S="${TIMEOUT_S:-660}"
 OUT="${OUT:-bench/results/E8-corpus-${CONFIG}.csv}"
 
 mkdir -p "$(dirname "$OUT")"

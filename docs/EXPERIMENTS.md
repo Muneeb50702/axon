@@ -2451,6 +2451,68 @@ underneath and noticing the number did not move the way the code says it must.
 
 ---
 
+## E8 — AXON-Bench on device: the corpus, actually run
+
+*2026-08-19 · TECNO Camon 20 · battery 91% · artefacts:
+`bench/results/E8-core-*.csv` · `tools/run-corpus.sh`*
+
+Until today the §14.1 corpus had never been run through any arm. Every number
+this project reported was a micro-benchmark or a single hand-driven task, and
+there was **no task-success rate at all** — the gap between a system with
+anecdotes and a system with an evaluation.
+
+### Why it had not been run, and what made it possible
+
+A corpus pass takes hours on hardware that `SIGKILL`s the app in batches (E6b),
+and a harness living inside that process cannot report the run that killed it.
+So the runner is a **host script** driving one task per gateway invocation,
+appending each result the moment it is known — a kill costs at most the task in
+flight — and skipping tasks already recorded, so a re-run continues rather than
+restarting.
+
+That resumability was not theoretical. The first launch died when its parent
+shell exited, having completed one task; the relaunch skipped it and carried on.
+
+### Oracles are evaluated externally
+
+Success is decided from `dumpsys activity` and `uiautomator dump` — **never from
+the trace AXON wrote.** The agent's own outcome is self-assessment, which is
+precisely what C2 exists to replace, and scoring the benchmark with it would let
+the system grade its own homework.
+
+The semantics mirror `PostConditionEvaluator` exactly — substring for
+`node_present`/`node_absent`, case-insensitive regex for `text_matches`,
+equality for `app_foreground` — so "succeeded" means the same thing on both
+sides. Independent evidence, not a different definition.
+
+`BenchCorpus` is exported to JSON rather than retyped into the script, for the
+same reason `TargetBy.wire` and `ExportGrammar` exist: a second copy of the goals
+and oracles would drift silently, and the failure would be a benchmark scoring
+tasks the system was never asked to do.
+
+### Two tasks are excluded from the denominator, on purpose
+
+`whatsapp_send_message` and `call_contact` are irreversible acts, and §16
+requires a human to approve them. They cannot run unattended and are recorded as
+`GATED_CONFIRMATION` — **not as failures.** Counting them as failures would
+penalise the safety property the project claims as a contribution; hiding them
+would overstate coverage. They are printed with the table.
+
+### Building it exposed an observability gap
+
+The gateway announced completion only by replacing its notification, which
+nothing off-device can observe. The obvious proxy — the trace write — is *wrong*,
+because **a clean replay records no trace at all** (E24b). Watching for it made
+every successful replay look like a hang until the timeout expired, i.e. the
+benchmark was unrunnable on exactly the path C1′ is about. The gateway now emits
+an explicit `TASK_END` marker on every path.
+
+### Results
+
+*Filled in as passes complete; see the CSVs for the authoritative rows.*
+
+---
+
 ## Open measurements
 
 Required before publication. Listed here so gaps are visible rather than

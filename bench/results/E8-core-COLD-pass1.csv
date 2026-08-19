@@ -1,0 +1,2 @@
+task,config,attempted_at,outcome,oracle_pass,wall_ms,llm_calls,steps,killed,detail
+open_whatsapp,COLD,2026-08-19T10:23:04+05:00,SUCCESS,1,75743,1,1,0,"app_foreground:ok;"

@@ -105,3 +105,14 @@ val exportCorpus by tasks.registering(JavaExec::class) {
     args(layout.buildDirectory.file("axon-corpus.json").get().asFile.path)
     outputs.file(layout.buildDirectory.file("axon-corpus.json"))
 }
+
+/** Render a device corpus run (E8). `./gradlew :bench:corpusReport -Pcsv=a.csv,b.csv` */
+val corpusReport by tasks.registering(JavaExec::class) {
+    group = "verification"
+    description = "Report §14.2 metrics from tools/run-corpus.sh output"
+    mainClass.set("dev.axon.bench.RunCorpusReport")
+    classpath = sourceSets["main"].runtimeClasspath
+    doFirst {
+        args((project.findProperty("csv") as String? ?: "").split(",").filter { it.isNotBlank() })
+    }
+}
