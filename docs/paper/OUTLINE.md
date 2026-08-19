@@ -153,6 +153,32 @@ the single most valuable addition available.*
 
 AXON-Bench (C5): tiers, oracles, metrics. The ablation matrix A–E.
 
+**Lead with the oracle design, because it is the part a reviewer should trust.**
+Success is decided from `dumpsys` and `uiautomator dump` — evidence collected
+*outside* the agent — never from the trace AXON wrote. A benchmark scored by the
+system under test is the system grading its own homework, and it is a
+particularly bad idea here: C2's entire argument is that a small model's
+self-assessment is unreliable, so accepting its self-report as the benchmark
+oracle would contradict the paper's own thesis. The external checker mirrors
+`PostConditionEvaluator`'s semantics exactly, so "succeeded" means the same
+thing on both sides — independent evidence, not a different definition.
+
+**State the two excluded tasks and why.** `whatsapp_send_message` and
+`call_contact` are irreversible, and §16 requires a human to approve them, so
+they cannot run unattended. They are reported as `GATED_CONFIRMATION` and
+excluded from the denominator. Counting them as failures would penalise the
+safety property the paper claims as a contribution; omitting them silently would
+overstate coverage. Print them with the table.
+
+**Report coverage, not just rates.** On this hardware an arm is *expected* to be
+cut short — E6b shows `system_server` reaping the process in batches — so a
+table without "attempted / skipped / killed" reads as complete when it is not.
+
+*Evidence: **E8** — the corpus run. Until 2026-08-19 it had never been run
+through any arm and the project had **no task-success rate at all**; that gap,
+not any missing mechanism, was what separated this from a paper with an
+evaluation.*
+
 **Methodological point worth making explicitly**, because it is unusual and
 defensible: the evaluation is split by what is device-bound.
 
