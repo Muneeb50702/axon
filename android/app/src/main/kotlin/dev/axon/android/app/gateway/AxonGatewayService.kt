@@ -188,6 +188,26 @@ class AxonGatewayService : LifecycleService() {
             result
                 .onSuccess { update("${it.outcome} — ${it.steps.size} steps, ${it.totalMs / 1000}s") }
                 .onFailure { update("error: ${it.message}") }
+
+            // A terminal marker, logged for anything watching from outside.
+            //
+            // The gateway previously announced completion only by replacing its
+            // notification, which nothing off-device can observe. The corpus
+            // runner drives one task per invocation over adb (E8) and needs to
+            // know when a task has ended; the obvious proxy — the trace write —
+            // is wrong, because **a clean replay records no trace at all**
+            // (E24b). Watching for it makes every successful replay look like a
+            // hang until the timeout expires, which is the opposite of the
+            // truth and would have made the benchmark unrunnable on exactly the
+            // path C1′ is about.
+            Log.i(
+                TAG,
+                "TASK_END utterance='$utterance' config=${config.id} " +
+                    result.fold(
+                        onSuccess = { "outcome=${it.outcome} steps=${it.steps.size} llm=${it.llmCalls} ms=${it.totalMs}" },
+                        onFailure = { "outcome=ERROR reason=${it.message}" },
+                    ),
+            )
         }
     }
 

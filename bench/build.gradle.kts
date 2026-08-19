@@ -89,3 +89,19 @@ val retirementStudy by tasks.registering(JavaExec::class) {
     mainClass.set("dev.axon.bench.RunRetirementStudy")
     classpath = sourceSets["main"].runtimeClasspath
 }
+
+/**
+ * Export the §14.1 corpus for the on-device runner (E8).
+ *
+ * The runner is a host shell script — it has to survive the app being SIGKILLed
+ * mid-task (E6b), which a driver inside that process cannot. Exporting keeps
+ * BenchCorpus the single source of the goals and oracles.
+ */
+val exportCorpus by tasks.registering(JavaExec::class) {
+    group = "verification"
+    description = "Write the §14.1 task corpus to build/axon-corpus.json"
+    mainClass.set("dev.axon.bench.ExportCorpus")
+    classpath = sourceSets["main"].runtimeClasspath
+    args(layout.buildDirectory.file("axon-corpus.json").get().asFile.path)
+    outputs.file(layout.buildDirectory.file("axon-corpus.json"))
+}
