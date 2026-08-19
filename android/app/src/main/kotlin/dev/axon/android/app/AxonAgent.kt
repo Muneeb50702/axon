@@ -195,13 +195,27 @@ class AxonAgent(private val context: Context) {
      * promise, and it is the right trade — but it does mean a first-run
      * experience that requires adb, which the UI has to explain rather than hide.
      */
-    fun findModel(): File? = File(MODEL_DIR).listFiles()
-        ?.filter { it.name.endsWith(".gguf") }
-        ?.minByOrNull { it.length() }
+    fun findModel(hint: String? = null): File? {
+        val candidates = File(MODEL_DIR).listFiles()
+            ?.filter { it.name.endsWith(".gguf") }
+            ?: return null
 
-    suspend fun load(): Result<Unit> = withContext(Dispatchers.IO) {
+        // A hint selects §14.3's arm E (D10: the larger model D must beat).
+        // Substring rather than an exact path so the harness does not have to
+        // know the quantisation suffix, and `null` keeps the shipping
+        // behaviour — smallest model wins — because that is the only one the
+        // app should ever choose for a user.
+        hint?.takeIf { it.isNotBlank() }?.let { h ->
+            candidates.firstOrNull { it.name.contains(h, ignoreCase = true) }
+                ?.let { return it }
+            Log.w(TAG, "no model matching '$h'; falling back to the smallest")
+        }
+        return candidates.minByOrNull { it.length() }
+    }
+
+    suspend fun load(modelHint: String? = null): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val file = findModel() ?: error(
+            val file = findModel(modelHint) ?: error(
                 "No model in $MODEL_DIR. Push one with ./tools/fetch-model.sh --push",
             )
             _state.value = _state.value.copy(status = "loading ${file.name}…")

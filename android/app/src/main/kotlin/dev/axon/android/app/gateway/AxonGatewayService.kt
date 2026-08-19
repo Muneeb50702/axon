@@ -96,7 +96,9 @@ class AxonGatewayService : LifecycleService() {
                 // only caller that ever passes it is a measurement harness over
                 // adb; a user tapping "run" gets D and cannot get anything else.
                 val config = RunConfig.of(intent.getStringExtra(EXTRA_CONFIG))
-                if (utterance.isNotBlank()) startTask(utterance, config)
+                // §14.3 arm E needs the larger model (D10). Measurement only.
+                val model = intent.getStringExtra(EXTRA_MODEL)
+                if (utterance.isNotBlank()) startTask(utterance, config, model)
             }
 
             // §16: the user's answer to an irreversible action. Delivered as a
@@ -115,7 +117,11 @@ class AxonGatewayService : LifecycleService() {
         return START_NOT_STICKY
     }
 
-    private fun startTask(utterance: String, config: RunConfig = RunConfig.DEFAULT) {
+    private fun startTask(
+        utterance: String,
+        config: RunConfig = RunConfig.DEFAULT,
+        modelHint: String? = null,
+    ) {
         if (currentTask?.isActive == true) {
             Log.w(TAG, "a task is already running; ignoring '$utterance'")
             return
@@ -171,7 +177,7 @@ class AxonGatewayService : LifecycleService() {
 
             if (!replayable && !a.isModelLoaded) {
                 update("loading model…")
-                a.load().onFailure {
+                a.load(modelHint).onFailure {
                     update("model failed to load")
                     return@launch
                 }
@@ -344,6 +350,16 @@ class AxonGatewayService : LifecycleService() {
          * degraded agent without being told they are.
          */
         const val EXTRA_CONFIG = "config"
+
+        /**
+         * Which GGUF to load, by substring — §14.3's arm E (D10).
+         *
+         * Absent means the shipping choice: the smallest model present. Nothing
+         * in the UI sets it. A user should never be silently switched onto a
+         * model with different characteristics from the one the app was
+         * evaluated with.
+         */
+        const val EXTRA_MODEL = "model"
 
         /**
          * Start a task from anywhere — the app UI, a quick-settings tile, or
