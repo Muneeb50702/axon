@@ -1,9 +1,6 @@
 --------- beginning of main
-08-19 14:30:30.319  9527  9527 I AxonA11y: AXON accessibility service connected
-08-19 14:30:31.831  9527  9550 I AxonAgent: run 'navigate to Liberty Market' under config COLD (skillReplay=false)
-08-19 14:30:32.173  9527  9550 I AxonAgent: E33 grounding: ScreenGrounded(labels=17, paired=true)
-08-19 14:31:47.112  9527  9550 I AxonAgent: E33 grounding: ScreenGrounded(labels=1, paired=true)
-08-19 14:32:49.093  9527  9550 I AxonAgent: E33 grounding: ScreenGrounded(labels=6, paired=true)
-08-19 14:34:00.442  9527  9550 I AxonAgent: E33 grounding: ScreenGrounded(labels=6, paired=true)
-08-19 14:35:12.277  9527  9550 I AxonAgent: E22b trace write: 3 step(s) in 37 ms
-08-19 14:35:12.313  9527  9527 I AxonGateway: TASK_END utterance='navigate to Liberty Market' config=COLD outcome=ESCALATED steps=3 llm=4 ms=280404
+08-19 16:42:41.517 27509 27509 I AxonA11y: AXON accessibility service connected
+08-19 16:42:46.759 27509 27531 I AxonAgent: run 'navigate to Liberty Market' under config COLD (skillReplay=false)
+08-19 16:42:47.146 27509 27531 I AxonAgent: E33 grounding: ScreenGrounded(labels=17, paired=true)
+08-19 16:46:02.244 27509 27531 I AxonAgent: E33 grounding: ScreenGrounded(labels=17, paired=true)
+08-19 16:49:27.308 27509 27531 I AxonAgent: E33 grounding: ScreenGrounded(labels=6, paired=true)

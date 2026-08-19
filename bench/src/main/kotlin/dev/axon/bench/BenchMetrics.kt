@@ -91,9 +91,38 @@ data class BenchMetrics(
     @SerialName("mean_steps") val meanSteps: Double,
 ) {
     /** One line for the §14.3 results table. */
+    /**
+     * Is the task-success rate worth quoting at all?
+     *
+     * **The hazard this exists to stop.** Arm E completed 2 of 8 runnable tasks;
+     * the other 6 were killed by the OS on every attempt and correctly excluded
+     * from the denominator — so the rate came out **100%**, next to arm D's 40%.
+     * Both numbers were computed correctly and the comparison was nonsense.
+     *
+     * Excluding lost samples is right when they are rare and indefensible when
+     * they are the majority: at that point the rate describes a self-selected
+     * subset of the corpus — here, exactly the two tasks short enough to finish
+     * before the process was reaped.
+     *
+     * So below half coverage the rate is reported as unreliable rather than
+     * printed as a bare percentage. This is the same principle as
+     * [validActionRate] and [recoveryRate] being nullable: *no measurement* and
+     * *a measurement of zero* are different findings, and so are *a rate* and
+     * *a rate over a quarter of the tasks*.
+     */
+    public val coverage: Double get() =
+        if (attempted + skipped == 0) 0.0 else attempted.toDouble() / (attempted + skipped)
+
+    public val rateIsReliable: Boolean get() = coverage >= MIN_COVERAGE
+
     public fun render(): String = buildString {
         append(config.padEnd(6))
-        append("TSR ").append(pct(taskSuccessRate)).append("  ")
+        // The denominator travels with the number, always, so the rate cannot be
+        // quoted without it.
+        append("TSR ")
+        if (rateIsReliable) append(pct(taskSuccessRate)) else append("UNRELIABLE ")
+        append("[").append((taskSuccessRate * attempted).toInt()).append("/")
+            .append(attempted).append(" of ").append(attempted + skipped).append("]  ")
         append("valid ").append(validActionRate?.let { pct(it) } ?: "n/m   ").append("  ")
         append("LLM/task ").append(fmt(llmCallsPerTask)).append("  ")
         append("steps ").append(stepEfficiency?.let { fmt(it) + "x" } ?: "—").append("  ")
@@ -106,6 +135,17 @@ data class BenchMetrics(
     private fun fmt(v: Double) = "${(v * 100).toInt() / 100.0}".padEnd(5)
 
     public companion object {
+
+        /**
+         * Coverage below which a task-success rate is not reported as a
+         * percentage.
+         *
+         * Half is a judgement, not a derivation, and it is stated in one place
+         * so a reader can disagree with it there. The point is not the
+         * threshold — it is that *some* threshold must exist, because a rate
+         * over a self-selected quarter of a corpus is not a rate.
+         */
+        public const val MIN_COVERAGE: Double = 0.5
 
         /**
          * Fold a config's scored tasks into one row of the §14.3 table.

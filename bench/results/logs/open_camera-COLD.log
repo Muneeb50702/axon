@@ -1,5 +1,6 @@
 --------- beginning of main
-08-19 14:36:51.171 10561 11460 I AxonAgent: run 'open the camera' under config COLD (skillReplay=false)
-08-19 14:36:51.532 10561 11460 I AxonAgent: E33 grounding: LaunchCollapsed
-08-19 14:37:59.897 10561 11460 I AxonAgent: E22b trace write: 1 step(s) in 86 ms
-08-19 14:38:00.054 10561 10561 I AxonGateway: TASK_END utterance='open the camera' config=COLD outcome=SUCCESS steps=1 llm=1 ms=68635
+08-19 16:01:56.612 16903 16903 I AxonA11y: AXON accessibility service connected
+08-19 16:02:07.655 16903 16924 I AxonAgent: run 'open the camera' under config COLD (skillReplay=false)
+08-19 16:02:08.005 16903 16924 I AxonAgent: E33 grounding: LaunchCollapsed
+08-19 16:04:49.972 16903 16924 I AxonAgent: E22b trace write: 1 step(s) in 167 ms
+08-19 16:04:50.233 16903 16903 I AxonGateway: TASK_END utterance='open the camera' config=COLD outcome=SUCCESS steps=1 llm=1 ms=162143

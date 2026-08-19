@@ -1,3 +1,11 @@
 task,config,attempted_at,outcome,oracle_pass,wall_ms,agent_ms,llm_calls,steps,killed,detail,grounding
 open_whatsapp,COLD,2026-08-19T15:59:27+05:00,SUCCESS,1,165064,162262,1,1,0,"app_foreground:ok;","LaunchCollapsed x1 "
 battery_level,COLD,2026-08-19T16:01:51+05:00,PROCESS_KILLED,0,134491,,,,1,"app_foreground:FAIL;text_matches:FAIL;","ScreenGrounded x1 "
+open_camera,COLD,2026-08-19T16:04:59+05:00,SUCCESS,1,177308,162143,1,1,0,"app_foreground:ok;","LaunchCollapsed x1 "
+toggle_wifi,COLD,2026-08-19T16:12:04+05:00,PROCESS_KILLED,0,415045,,,,1,"app_foreground:FAIL;node_present:FAIL;state[Wi-Fi is actually enabled]:FAIL(got=0);","ScreenGrounded x3 "
+find_setting,COLD,2026-08-19T16:22:13+05:00,PROCESS_KILLED,0,598817,,,,1,"app_foreground:FAIL;text_matches:FAIL;","ScreenGrounded x4 "
+set_alarm,COLD,2026-08-19T16:32:26+05:00,PROCESS_KILLED,0,602135,,,,1,"text_matches:FAIL;node_absent:ok;","ScreenGrounded x4 "
+add_calendar_event,COLD,2026-08-19T16:42:36+05:00,PROCESS_KILLED,0,599525,,,,1,"text_matches:FAIL;","ScreenGrounded x3 "
+navigate_to_place,COLD,2026-08-19T16:52:47+05:00,PROCESS_KILLED,0,599947,,,,1,"app_foreground:FAIL;text_matches:FAIL;","ScreenGrounded x3 "
+whatsapp_send_message,COLD,2026-08-19T16:52:47+05:00,GATED_CONFIRMATION,,,,,,0,"irreversible action; §16 requires the user to approve",""
+call_contact,COLD,2026-08-19T16:52:47+05:00,GATED_CONFIRMATION,,,,,,0,"irreversible action; §16 requires the user to approve",""

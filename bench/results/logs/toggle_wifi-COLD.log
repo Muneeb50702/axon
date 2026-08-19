@@ -1,4 +1,5 @@
 --------- beginning of main
-08-19 14:18:39.525 29481  5817 I AxonAgent: run 'turn on wifi' under config COLD (skillReplay=false)
-08-19 14:18:39.859 29481  5817 I AxonAgent: E33 grounding: ScreenGrounded(labels=17, paired=true)
-08-19 14:19:50.689 29481  5817 I AxonAgent: E33 grounding: ScreenGrounded(labels=1, paired=true)
+08-19 16:05:03.385 16903 16924 I AxonAgent: run 'turn on wifi' under config COLD (skillReplay=false)
+08-19 16:05:03.748 16903 16924 I AxonAgent: E33 grounding: ScreenGrounded(labels=17, paired=true)
+08-19 16:08:11.099 16903 16924 I AxonAgent: E33 grounding: ScreenGrounded(labels=1, paired=true)
+08-19 16:10:44.638 16903 16924 I AxonAgent: E33 grounding: ScreenGrounded(labels=29, paired=true)

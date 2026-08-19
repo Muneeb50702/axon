@@ -2916,6 +2916,76 @@ qualifier would overstate what was varied.
 
 ---
 
+## E36b — The larger model is runnable but not survivable, and the metric nearly lied
+
+*2026-08-19 · core tier through `gemma-4-E2B-it-Q4_K_M` (3.11 GB)*
+
+E36 showed the larger model loads and completes a task. This ran the whole core
+tier through it — §3.1's substitution-surface question: **does model capacity
+substitute for architectural scaffolding?**
+
+| task | arm E (3.1 GB) | arm C (806 MB) |
+|---|---|---|
+| `open whatsapp` | SUCCESS 165 s / 1 call | SUCCESS 72 s / 1 call |
+| `open the camera` | SUCCESS 177 s / 1 call | SUCCESS 79 s / 1 call |
+| `battery percentage` | **killed** | fail (escalated) |
+| `turn on wifi` | **killed** | fail |
+| `find display settings` | **killed** | fail |
+| `set an alarm` | **killed** | fail |
+| `add calendar event` | **killed** | fail |
+| `navigate to Liberty Market` | **killed** | fail |
+
+**Six of eight runnable tasks were terminated by the OS on every attempt** — the
+same two launch goals succeeded, and nothing else finished at all.
+
+### The finding: capacity did not substitute for scaffolding
+
+The larger model answered no task the 1B could not. It succeeded on exactly the
+two goals where a deterministic mechanism already removes the model's judgement
+(E21's package lookup and E21b's completion test) — and on those it was **2.3×
+slower**. On every task requiring unaided navigation it never produced an answer,
+because it did not survive long enough to.
+
+That is a stronger result for the architecture-over-scale thesis than a narrow
+win would have been. Scaling the model 3.9× in file size on this hardware bought
+**no additional task**, cost **2.3× per call**, and **halved survivability**.
+
+### Survivability is the cost that matters here, not latency
+
+| | 1B | 3B |
+|---|---|---|
+| peak PSS | 1.08 GB | **2.24 GB** |
+| attempts killed by the OS | 5 of 13 (38%) | **6 of 10 (60%)** |
+| tasks with no surviving attempt | 2 of 8 | **6 of 8** |
+
+E6b's account predicts this: `system_server` reaps in batches and takes the
+largest tenant, so doubling the resident set moves the agent up the queue. The
+larger model is *runnable* — E36 established that — and it is not *survivable*
+for anything longer than a single call.
+
+### The metric nearly reported this as a triumph
+
+Killed tasks are excluded from the denominator, because a kill is a lost sample
+rather than a task failure (E6b). With 6 of 8 lost, arm E's task-success rate
+came out as **100%** — two successes over two completed attempts — and would have
+printed next to arm D's 40%.
+
+Both numbers were computed correctly and the comparison was nonsense. Excluding
+lost samples is right when they are rare and indefensible when they are the
+majority: at that point the rate describes a **self-selected subset** — here,
+precisely the two tasks short enough to finish before the process was reaped.
+
+`BenchMetrics` now carries the denominator into the rate itself
+(`TSR 33.3% [2/6 of 10]`) and refuses to print a percentage below 50% coverage
+(`TSR UNRELIABLE [2/2 of 10]`). Same principle as `validActionRate` and
+`recoveryRate` being nullable: *no measurement* and *a measurement of zero* are
+different findings, and so are *a rate* and *a rate over a quarter of the tasks*.
+
+The threshold is a judgement, stated in one place so a reader can disagree with
+it there. What is not a judgement is that some threshold must exist.
+
+---
+
 ## Open measurements
 
 Required before publication. Listed here so gaps are visible rather than

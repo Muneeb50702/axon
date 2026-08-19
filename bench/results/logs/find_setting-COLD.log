@@ -1,10 +1,7 @@
 --------- beginning of main
-08-19 12:50:32.793 30870 30870 I AxonA11y: AXON accessibility service connected
-08-19 12:50:34.340 30870 30914 I AxonAgent: run 'find the display settings' under config COLD (skillReplay=false)
-08-19 12:50:34.680 30870 30914 I AxonAgent: E33 grounding: ScreenGrounded(labels=17, paired=true)
-08-19 12:51:55.103 30870 30914 I AxonAgent: E33 grounding: ScreenGrounded(labels=1, paired=true)
-08-19 12:53:02.071 30870 30914 I AxonAgent: E33 grounding: ScreenGrounded(labels=24, paired=true)
-08-19 12:54:36.180 30870 30914 I AxonAgent: E33 grounding: ScreenGrounded(labels=1, paired=true)
-08-19 12:55:45.177 30870 30914 I AxonAgent: E33 grounding: ScreenGrounded(labels=1, paired=true)
-08-19 12:57:00.972 30870 30914 I AxonAgent: E22b trace write: 5 step(s) in 36 ms
-08-19 12:57:00.992 30870 30870 I AxonGateway: TASK_END utterance='find the display settings' config=COLD outcome=ESCALATED steps=5 llm=5 ms=386587
+08-19 16:12:09.530 19808 19808 I AxonA11y: AXON accessibility service connected
+08-19 16:12:18.668 19808 19850 I AxonAgent: run 'find the display settings' under config COLD (skillReplay=false)
+08-19 16:12:18.947 19808 19850 I AxonAgent: E33 grounding: ScreenGrounded(labels=17, paired=true)
+08-19 16:15:34.650 19808 19850 I AxonAgent: E33 grounding: ScreenGrounded(labels=1, paired=true)
+08-19 16:18:26.755 19808 19850 I AxonAgent: E33 grounding: ScreenGrounded(labels=24, paired=true)
+08-19 16:21:47.976 19808 19850 I AxonAgent: E33 grounding: ScreenGrounded(labels=24, paired=true)
