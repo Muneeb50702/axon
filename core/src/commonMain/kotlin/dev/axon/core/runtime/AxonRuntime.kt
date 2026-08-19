@@ -248,7 +248,27 @@ public class AxonRuntime(
         if (clean.isEmpty()) return null
 
         val newest = clean.first()
-        val existing = skills.all().firstOrNull { it.manifest.goalPattern.isMatchFor(goal.utterance) }
+
+        // Which existing skill, if any, is this goal a further example of?
+        //
+        // Asked through `GoalMatcher` — the SAME predicate `match()` uses to
+        // decide what to replay — because the two questions are the same
+        // question. **E35**: this used a local `isMatchFor` that compared only
+        // the FIRST WORD of the pattern, so `"open whatsapp"` reduced to
+        // `"open"` and every goal containing it was treated as that skill.
+        //
+        // Two things followed, both silent. `open the camera` succeeded cleanly
+        // three times and **never compiled**, because each success was routed
+        // into `refine(open_whatsapp, …)` instead of compiling a new skill — so
+        // C1′ could not accumulate a second launch skill at all. And the camera
+        // traces were absorbed into `open_whatsapp.sourceTraces`, which the
+        // model documents as "provenance for the evaluation": the skill ended up
+        // citing traces of a different task as its own evidence.
+        //
+        // The behaviour never broke, which is why nothing caught it. `refine`
+        // kept the WhatsApp step, replay kept launching WhatsApp, and the only
+        // visible symptom was a store that quietly refused to grow.
+        val existing = skills.match(Goal(goal.utterance))?.skill
 
         val result = if (existing != null) {
             compiler.refine(existing, newest)
@@ -267,10 +287,6 @@ public class AxonRuntime(
         }
     }
 
-    private fun String.isMatchFor(utterance: String): Boolean {
-        val literal = replace(Regex("""\{[a-z_][a-z0-9_]*\}"""), "").trim()
-        return literal.isNotEmpty() && utterance.lowercase().contains(literal.split(" ").first())
-    }
 }
 
 /** A completed run, with the path that served it. */
