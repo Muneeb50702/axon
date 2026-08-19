@@ -63,6 +63,38 @@ data class BenchTask(
     @SerialName("required_apps") val requiredApps: List<String> = emptyList(),
 
     /**
+     * Device state to establish before the run, as `adb shell` fragments.
+     *
+     * The corpus expresses initial conditions in [InitialCondition.setup] as
+     * English — *"Wi-Fi OFF"* — which a person can act on and a harness cannot.
+     * `toggle_wifi` was run with Wi-Fi already **on**, so the goal *"turn on
+     * wifi"* was satisfied before AXON started, and the task measured nothing.
+     *
+     * Kept deliberately small and shell-shaped because it is setup, not
+     * evaluation: it puts the device into the state the task assumes, and
+     * nothing here decides success.
+     */
+    @SerialName("setup_commands") val setupCommands: List<String> = emptyList(),
+
+    /**
+     * A device-state assertion the accessibility tree cannot express.
+     *
+     * §14.1 states its own main limitation: an oracle can only assert what is
+     * visible in the tree, so *"the alarm is set"* is checked by the alarm
+     * appearing in a list. For most tasks that is an acceptable proxy. For
+     * `toggle_wifi` it is not, because the UI oracle
+     * (`app_foreground=settings` ∧ `node_present="Wi-Fi"`) is satisfied the
+     * moment Settings' main page opens — **it never checks Wi-Fi at all**, and
+     * cannot distinguish "turned it on" from "looked at it".
+     *
+     * A benchmark that cannot tell doing from looking is not measuring the
+     * task. This is an `adb shell` command plus the value it must print, run by
+     * the host runner as an *additional* requirement on top of the UI oracle —
+     * never a replacement, so the tree-visible evidence still has to hold too.
+     */
+    @SerialName("state_assertion") val stateAssertion: StateAssertion? = null,
+
+    /**
      * Does completing this task cross §16's confirmation gate?
      *
      * True for tasks that place a call, send a message, spend money or delete
@@ -103,6 +135,17 @@ enum class BenchTier {
     /** 5 tasks of 6+ composed steps (§14.1). */
     @SerialName("long_horizon") LONG_HORIZON,
 }
+
+/** A device-state check the UI tree cannot express (see [BenchTask.stateAssertion]). */
+@Serializable
+data class StateAssertion(
+    /** `adb shell` fragment, e.g. `settings get global wifi_on`. */
+    val command: String,
+    /** Trimmed stdout must equal this. */
+    val expect: String,
+    /** What this is really asserting, for the results table. */
+    val describes: String,
+)
 
 @Serializable
 data class InitialCondition(

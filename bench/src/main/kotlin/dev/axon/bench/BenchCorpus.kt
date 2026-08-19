@@ -134,6 +134,18 @@ public object BenchCorpus {
             // tile is one gesture, but it is not reachable through the
             // accessibility tree the same way, so the count reflects the route
             // the agent can actually take.
+            // Enforced, not described. "Wi-Fi OFF" lived only in the prose
+            // setup list, so this task ran with Wi-Fi already on and the goal
+            // "turn on wifi" was satisfied before AXON started.
+            setupCommands = listOf("svc wifi disable"),
+            // The UI oracle below is satisfied the moment Settings' main page
+            // opens -- it never checks Wi-Fi. This is the assertion that makes
+            // the task mean what its goal says.
+            stateAssertion = StateAssertion(
+                command = "settings get global wifi_on",
+                expect = "1",
+                describes = "Wi-Fi is actually enabled",
+            ),
             optimalSteps = 4,
         ),
 
@@ -144,7 +156,15 @@ public object BenchCorpus {
             initialCondition = InitialCondition(setup = listOf("Start on the home screen")),
             successOracle = listOf(
                 PostCondition(APP_FOREGROUND, "com.android.settings"),
-                PostCondition(TEXT_MATCHES, "brightness|display"),
+                // "brightness|display" was satisfied by the Settings MAIN page,
+                // whose menu lists an item called "Display & Brightness" -- so
+                // the task passed by opening Settings without finding anything.
+                // These strings name controls that exist only once the Display
+                // screen is actually open. Device-specific wording is the cost;
+                // an oracle that cannot tell arriving from starting is not a
+                // measurement, so validity wins over portability here and the
+                // dependence is stated rather than hidden.
+                PostCondition(TEXT_MATCHES, "adaptive brightness|screen brightness|brightness level"),
             ),
             // Read-only, and specifically tests search-then-navigate rather than
             // memorised menu position — the thing that breaks across OEM skins.

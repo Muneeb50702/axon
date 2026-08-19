@@ -1,1 +1,11 @@
 task,config,attempted_at,outcome,oracle_pass,wall_ms,agent_ms,llm_calls,steps,killed,detail
+open_whatsapp,COLD,2026-08-19T10:41:46+05:00,SUCCESS,1,71803,63918,1,1,0,"app_foreground:ok;"
+battery_level,COLD,2026-08-19T10:48:06+05:00,ESCALATED,0,372015,371210,5,3,0,"app_foreground:FAIL;text_matches:FAIL;"
+open_camera,COLD,2026-08-19T10:49:27+05:00,SUCCESS,1,72490,69899,1,1,0,"app_foreground:ok;"
+toggle_wifi,COLD,2026-08-19T10:56:12+05:00,ESCALATED,0,396882,395867,5,3,0,"app_foreground:FAIL;node_present:FAIL;"
+find_setting,COLD,2026-08-19T10:58:35+05:00,PROCESS_KILLED,1,135338,0,0,0,1,"app_foreground:ok;text_matches:ok;"
+set_alarm,COLD,2026-08-19T11:05:49+05:00,ESCALATED,0,426488,423689,5,3,0,"text_matches:FAIL;node_absent:ok;"
+add_calendar_event,COLD,2026-08-19T11:08:44+05:00,PROCESS_KILLED,0,166360,0,0,0,1,"text_matches:FAIL;"
+navigate_to_place,COLD,2026-08-19T11:14:13+05:00,ESCALATED,0,321001,314873,4,3,0,"app_foreground:FAIL;text_matches:FAIL;"
+whatsapp_send_message,COLD,2026-08-19T11:14:13+05:00,GATED_CONFIRMATION,,,,,,0,"irreversible action; §16 requires the user to approve"
+call_contact,COLD,2026-08-19T11:14:13+05:00,GATED_CONFIRMATION,,,,,,0,"irreversible action; §16 requires the user to approve"

@@ -127,9 +127,22 @@ reset_device() {
 }
 
 run_task() {
-  local id="$1" goal="$2" oracle_json="$3" start="${4:-}"
+  local id="$1" goal="$2" oracle_json="$3" start="${4:-}" setupcmds="${5:-[]}" stateassert="${6:-null}"
 
   reset_device "$start"
+
+  # Establish the state the task assumes. `toggle_wifi` expects Wi-Fi OFF and
+  # said so only in prose, so it ran with Wi-Fi already on and the goal "turn on
+  # wifi" was satisfied before AXON started.
+  while IFS= read -r -u 5 cmd; do
+    [ -z "$cmd" ] && continue
+    echo "    setup: $cmd"
+    adb shell "$cmd" </dev/null >/dev/null 2>&1
+  done 5< <(python3 -c "
+import json,sys
+for c in json.loads(sys.argv[1]): print(c)
+" "$setupcmds")
+  sleep 2
   adb logcat -c >/dev/null 2>&1
   local t0 killed=0 outcome="NONE"
   t0=$(date +%s%3N)
@@ -175,7 +188,7 @@ run_task() {
   local pass=1 detail=""
   # FD 4: the outer task loop owns FD 3, and nesting the same descriptor
   # would have this loop consume the task list.
-  while IFS=$'\t' read -r -u 4 otype ovalue; do
+  while IFS=$'\x1f' read -r -u 4 otype ovalue; do
     [ -z "$otype" ] && continue
     if check_oracle "$otype" "$ovalue" "$xml" "$fg"; then
       detail="${detail}${otype}:ok;"
@@ -185,23 +198,44 @@ run_task() {
     fi
   done 4< <(python3 -c "
 import json,sys
-for o in json.loads(sys.argv[1]): print(o['type']+'\t'+o['value'])
+for o in json.loads(sys.argv[1]): print(o['type']+'\x1f'+o['value'])
 " "$oracle_json")
+
+  # A device-state assertion the accessibility tree cannot express, ANDed with
+  # the UI oracle rather than replacing it. toggle_wifi's UI oracle is satisfied
+  # the moment Settings opens and never checks Wi-Fi; without this the benchmark
+  # could not tell doing the task from looking at it.
+  if [ -n "$stateassert" ] && [ "$stateassert" != "null" ]; then
+    local sa_cmd sa_expect sa_desc sa_got
+    sa_cmd=$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['command'])" "$stateassert")
+    sa_expect=$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['expect'])" "$stateassert")
+    sa_desc=$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['describes'])" "$stateassert")
+    sa_got=$(adb shell "$sa_cmd" </dev/null 2>/dev/null | tr -d '\r\n')
+    if [ "$sa_got" = "$sa_expect" ]; then
+      detail="${detail}state[$sa_desc]:ok;"
+    else
+      detail="${detail}state[$sa_desc]:FAIL(got=$sa_got);"
+      pass=0
+    fi
+  fi
 
   # AXON's own numbers, for context only -- never used to decide pass/fail.
   # Taken from the TASK_END marker, which is emitted on every path including a
   # clean replay; the database only has a row when the task was PLANNED.
-  local llm=0 steps=0 agent_ms=0 endline
+  local llm="" steps="" agent_ms="" endline
   endline=$(adb logcat -d 2>/dev/null | grep "AxonGateway.*TASK_END" | tail -1)
   if [ -n "$endline" ]; then
     outcome=$(echo "$endline" | sed -nE 's/.*outcome=([A-Z_]+).*/\1/p')
     llm=$(echo "$endline" | sed -nE 's/.*llm=([0-9]+).*/\1/p')
     steps=$(echo "$endline" | sed -nE 's/.*steps=([0-9]+).*/\1/p')
     agent_ms=$(echo "$endline" | sed -nE 's/.*ms=([0-9]+).*/\1/p')
-    [ -z "$llm" ] && llm=0
-    [ -z "$steps" ] && steps=0
-    [ -z "$agent_ms" ] && agent_ms=0
   fi
+  # Left EMPTY, never 0, when the process died before emitting TASK_END. A zero
+  # would read as "made no model calls" -- which is what a free replay looks
+  # like -- when the truth is "we do not know". This project has repeatedly
+  # found that null and zero are different findings (BenchMetrics.recoveryRate,
+  # E9's healsSucceeded); recording a fabricated zero here would put the same
+  # mistake in the raw data.
   local _unused
   [ "$killed" = 1 ] && outcome="PROCESS_KILLED"
 
@@ -218,7 +252,14 @@ echo "AXON-Bench: config=$CONFIG tier=$TIER -> $OUT"
 # exactly one task -- reporting success, having silently skipped eight. It cost
 # three confusing restarts to find, because "loop ran once then exited cleanly"
 # looks like a finished run, not a bug.
-while IFS=$'\t' read -r -u 3 id goal oracle conf start; do
+# IFS is \x1f (unit separator), NOT tab.
+#
+# Bash treats runs of IFS *whitespace* as one delimiter, so a task with no
+# start_package produced two consecutive tabs, they collapsed, and every later
+# field shifted left -- the state assertion was read as the setup command list
+# and silently executed as shell. A non-whitespace separator preserves empty
+# fields.
+while IFS=$'\x1f' read -r -u 3 id goal oracle conf start setupcmds stateassert; do
   [ -n "$ONLY" ] && [[ ",$ONLY," != *",$id,"* ]] && continue
   if have_result "$id"; then echo "  $id (already recorded, skipping)"; continue; fi
   if [ "$conf" = "True" ]; then
@@ -226,15 +267,17 @@ while IFS=$'\t' read -r -u 3 id goal oracle conf start; do
     echo "$id,$CONFIG,$(date -Iseconds),GATED_CONFIRMATION,,,,,,0,\"irreversible action; §16 requires the user to approve\"" >> "$OUT"
     continue
   fi
-  run_task "$id" "$goal" "$oracle" "$start"
+  run_task "$id" "$goal" "$oracle" "$start" "$setupcmds" "$stateassert"
 done 3< <(python3 -c "
 import json,sys
 tier=sys.argv[2]
 for t in json.load(open(sys.argv[1])):
     if tier!='all' and t['tier']!=tier: continue
     ic = t.get('initial_condition') or {}
-    print('\t'.join([t['id'], t['goal'], json.dumps(t['success_oracle']),
-                     str(t.get('requires_confirmation',False)), ic.get('start_package') or '']))
+    print('\x1f'.join([t['id'], t['goal'], json.dumps(t['success_oracle']),
+                     str(t.get('requires_confirmation',False)), ic.get('start_package') or '',
+                     json.dumps(t.get('setup_commands') or []),
+                     json.dumps(t.get('state_assertion') or None)]))
 " "$CORPUS" "$TIER")
 
 echo
