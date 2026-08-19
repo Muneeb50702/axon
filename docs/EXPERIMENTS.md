@@ -2581,6 +2581,97 @@ actually started, and records `NOT_STARTED` rather than a fabricated duration.
 
 ---
 
+## E33 — C3's grounding was not binding on device
+
+*2026-08-19 · TECNO Camon 20 · found while diagnosing E8's corpus failures ·
+artefact: `bench/results/logs/battery_level-COLD.log`*
+
+Every failed corpus task had the same shape: two steps succeed, then the planner
+names an element the precondition gate rejects. E18's screen grammar exists to
+make exactly that **unreachable at the sampler**, so either the mechanism was off
+or a belief about it was wrong.
+
+### The diagnostic, and why it had to exist
+
+D9's lesson is that constrained decoding needs a **positive check that the
+constraint is active**, because a grammar llama.cpp rejects is not installed and
+generation proceeds unconstrained *with no error*. That check existed for the
+base grammar, validated once at load. It did **not** exist for the screen
+grammar — which is rebuilt every step, from live app labels, and is therefore the
+only grammar in the system built from untrusted input and the only one that can
+fail in the field.
+
+`Grounding` now reports one line per planning step. It ruled out each
+explanation in turn:
+
+| hypothesis | verdict |
+|---|---|
+| fell back to the unconstrained base grammar | ✘ — `ScreenGrounded` every step |
+| used the legacy value-only production, not E31's pairs | ✘ — `paired=true` |
+| llama.cpp rejected the grammar (D9) | ✘ — validated per step, accepted |
+| **the sampler emitted something the grammar did not permit** | **✔** |
+
+That last one is checked by comparing the *parsed action* against the same
+element list the grammar was built from — evidence independent of every layer
+that claimed the constraint was fine:
+
+```
+GrammarViolated(by=text, value=Power, permittedPairs=24)   ×3 in one run
+```
+
+### Root cause: the grammar trimmed, the gate did not
+
+`ScreenGrammar` trimmed each label before emitting it. `UiNode.matches` compares
+the raw attribute. So on a screen whose label is `"Power "`:
+
+- the grammar offered `"Power"`,
+- the model emitted `"Power"` — **correctly**, it was the only thing on offer,
+- the gate refused: *no element matching `text="Power"` … this screen has: Power*.
+
+The same self-contradiction E31 fixed for `by`, reaching it through whitespace
+instead. OEM skins ship these — this device's own launcher carries a label
+`'PiKaChUu :) '` with a trailing space.
+
+### Why this is the most serious defect found so far
+
+**C3's headline guarantee did not hold in the shipping configuration**, on real
+screens, while every other signal said it did. `ScreenGrammar.isSpecialised`
+returned true, the grammar parsed, the engine reported `constrained = true` — and
+the constraint did not bind.
+
+It cost a planning step (~80 s) each time it fired and handed the planner a
+contradictory reason to re-plan from, which is worse than no reason.
+
+The engine's own `constrained` flag is `grammar != null` — it reports that a
+grammar was *passed*, never that it *bound*. That is not evidence, and it is
+worth saying so wherever the flag is used.
+
+### Fix and verification
+
+The grammar emits the raw label. Trimming is still right for deciding whether a
+label is *usable* — a whitespace-only label names nothing — so the filter trims
+and the emitted literal does not.
+
+Reproduced as a JVM test first, so the regression is caught without a phone,
+then confirmed on device:
+
+| | before | after |
+|---|---|---|
+| `GrammarViolated` per run | **3** | **0** |
+| every step | `ScreenGrounded(paired=true)` | `ScreenGrounded(paired=true)` |
+
+Both grammars still parse in llama.cpp's own parser.
+
+### What the fix does *not* do
+
+The task still escalated. Grounding makes the model choose **reachably**, not
+**well** — E18b's semantic-selection gap is untouched, and this run shows a
+second problem plainly: two steps reported `labels=1`, a screen on which the
+projection offered the planner exactly one nameable element. Whether that is
+correct pruning or over-pruning is unmeasured (**E34**).
+
+---
+
 ## Open measurements
 
 Required before publication. Listed here so gaps are visible rather than
@@ -2610,4 +2701,5 @@ discovered late.
 | E24f | The cold arm at a healthy state of charge — E24c ran at 15–16% and battery *fell* while plugged in | needs device, charged |
 | E26c | How often does each `DriftClass` actually occur? Mine real Android release diffs — the missing weights that would rank the selector policies | a corpus of app updates |
 | E30 | The §14.3 **verifier** arm has no device path; grammar and skill-replay now do | needs an executor switch |
+| E34 | Is `CompactState` over-pruning? E33's run saw screens where the planner was offered **one** nameable element | compare projection against the raw tree |
 | E32b | Confirm on device that the re-keyed repetition guard actually fires | needs a charged phone |
