@@ -47,8 +47,25 @@ alternative, which E18 suggests is seldom, and it has not been measured.
 | claim | evidence | number | status |
 |---|---|---|---|
 | Constrained decoding eliminates malformed actions | E4, E4b | **100% vs 46.7%** valid actions, n=15, two independent runs | MEASURED |
-| A hallucinated *target* is unreachable at the sampler | E18, E31 | screen grammar; `{by,value}` pairs grounded together | MEASURED |
+| A hallucinated *target* is unreachable at the sampler | E18, E31, **E33** | **was FALSE on device until 2026-08-19**; 3 violations/run → 0 after the fix | MEASURED (after fix) |
 | Structural validity is **not** task success | E4b | a valid action named a non-interactive label | MEASURED |
+| The engine's `constrained` flag is evidence the grammar bound | — | it is `grammar != null` — reports only that one was *passed* | **FALSE, do not cite** |
+
+**The target-grounding claim needs its history stated, not hidden.** E18 and E31
+established the mechanism; E33 found it **did not bind on real screens** because
+the grammar emitted trimmed labels while the gate matched raw attributes. Every
+other signal — `isSpecialised`, the parse check, the engine's own flag — reported
+that the constraint was active. Any corpus result collected before
+2026-08-19 measured a system whose C3 was not working, which is why
+`E8-core-COLD-pre-E33.csv` is kept as the before-half of that comparison rather
+than deleted.
+
+The generalisable lesson, and the one worth a paragraph in the paper: **a
+constraint mechanism needs a check that its output actually obeyed it.** Verifying
+that the grammar was built, that it parses, and that it was passed to the sampler
+established all three and still missed a constraint that did not bind. Only
+comparing the *emitted action* against the *evidence the grammar was built from*
+caught it.
 
 The 100% is *by construction* — a lower value would mean the grammar was not
 installed, not that the model did badly. The paper must not let it read as a
