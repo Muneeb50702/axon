@@ -2575,9 +2575,74 @@ actually started, and records `NOT_STARTED` rather than a fabricated duration.
   each `DIFFERENT_START_SCREEN` variant *from the launcher* — the unperturbed
   condition — and scored it as perturbed.
 
-### Results
+### Results — arm C (grammar ✓, verifier ✓, skill reuse ✗)
 
-*Filled in as passes complete; `bench/results/E8-core-*.csv` are authoritative.*
+*`bench/results/E8-core-COLD.csv`, 2026-08-19, battery 66–91%, 36–44 °C*
+
+```
+TSR 33.3%  (2 of 6 attempted)   LLM/task 3.66   median 284 s
+2 gated by §16 · 5 of 13 attempts killed by the OS · 2 tasks with no surviving attempt
+```
+
+| task | outcome | oracle | wall | calls |
+|---|---|---|---|---|
+| `open the camera` | SUCCESS | **PASS** | 78 s | **1** |
+| `open whatsapp` | SUCCESS | **PASS** | 72 s | **1** |
+| `show me the battery percentage` | ESCALATED | fail | 412 s | 5 |
+| `find the display settings` | ESCALATED | fail | 391 s | 5 |
+| `navigate to Liberty Market` | ESCALATED | fail | 284 s | 4 |
+| `set an alarm for 7 am` | BUDGET_EXHAUSTED | fail | 421 s | 6 |
+| `turn on wifi` | killed ×2 | — | — | — |
+| `add a calendar event…` | killed | — | — | — |
+
+### The corpus splits cleanly, and the split is the result
+
+**Both successes are launch goals, and both cost exactly one model call.** Every
+task requiring navigation failed — after 4–6 calls and 5–7 minutes.
+
+That is the determinism method's own prediction, at task level. `open X` has a
+deterministic answer available outside the model (E21's package lookup) *and* a
+deterministic completion test (E21b's foreground package), so the model's
+judgement is removed from both decisions and the task costs one action. Nothing
+in the corpus's other tasks has either.
+
+### Fixing C3's grounding did **not** improve task success
+
+The pass was run twice: once before E33 (when the screen grammar was not
+binding) and once after.
+
+| | pre-E33 | post-E33 |
+|---|---|---|
+| TSR | 2/7 = 29% | 2/6 = 33% |
+| **tasks passed** | `open_camera`, `open_whatsapp` | **the same two** |
+| OS kills | 4/11 attempts | 5/11 attempts |
+
+**The same two tasks passed both times.** The percentage moved only because the
+denominators differ — different tasks lost every attempt to an OS kill — and no
+improvement should be read into it.
+
+This is E4b's caveat demonstrated one level up. E4b established that a 100%
+valid-action rate is *structural* validity and must not be read as task success;
+E8 shows the same thing for grounding: making every emitted target **resolvable**
+does not make it **right**. The failures are semantic (E18b's class — a valid
+action naming a real element irrelevant to the goal) and platform (E6b's kills),
+and C3 addresses neither.
+
+Worth stating plainly in the paper, because the opposite is the natural
+assumption: constrained decoding removes a failure class, and this corpus shows
+that class was not the binding constraint on task success for this model.
+
+### Coverage, not just rate
+
+**5 of 13 attempts were terminated by the OS**, and two tasks lost every attempt.
+On this hardware that is a property of the deployment substrate (E6b), not of the
+agent — but it means the denominator is 6, not 8, and a reader should treat
+33.3% as *two successes out of six completed attempts* rather than as a rate with
+useful precision.
+
+The kill rate is also not stationary: `open_whatsapp` was killed at 43–44 °C and
+succeeded at 36 °C after the device rested, which is consistent with E6b's
+memory-and-thermal account and inconsistent with a fixed time ceiling.
 
 ---
 

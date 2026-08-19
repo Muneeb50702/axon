@@ -7,3 +7,8 @@ find_setting,COLD,2026-08-19T12:57:09+05:00,ESCALATED,0,391570,386587,5,5,0,"app
 set_alarm,COLD,2026-08-19T13:00:35+05:00,PROCESS_KILLED,0,195863,,,,1,"text_matches:FAIL;node_absent:ok;","ScreenGrounded x3 "
 open_whatsapp,COLD,2026-08-19T14:18:35+05:00,SUCCESS,1,72316,64758,1,1,0,"app_foreground:ok;","LaunchCollapsed x1 "
 toggle_wifi,COLD,2026-08-19T14:20:19+05:00,PROCESS_KILLED,0,93745,,,,1,"app_foreground:ok;node_present:FAIL;state[Wi-Fi is actually enabled]:FAIL(got=0);","ScreenGrounded x2 "
+set_alarm,COLD,2026-08-19T14:27:30+05:00,BUDGET_EXHAUSTED,0,421304,415175,6,6,0,"text_matches:FAIL;node_absent:ok;","ScreenGrounded x6 "
+add_calendar_event,COLD,2026-08-19T14:30:25+05:00,PROCESS_KILLED,0,164915,,,,1,"text_matches:FAIL;","ScreenGrounded x2 "
+navigate_to_place,COLD,2026-08-19T14:35:19+05:00,ESCALATED,0,284067,280404,4,3,0,"app_foreground:FAIL;text_matches:FAIL;","ScreenGrounded x4 "
+whatsapp_send_message,COLD,2026-08-19T14:35:19+05:00,GATED_CONFIRMATION,,,,,,0,"irreversible action; §16 requires the user to approve",""
+call_contact,COLD,2026-08-19T14:35:19+05:00,GATED_CONFIRMATION,,,,,,0,"irreversible action; §16 requires the user to approve",""
