@@ -64,6 +64,15 @@ public class ConstrainedPlanner(
     private val screenGrounded: Boolean = true,
 
     /**
+     * Reports how the sampler was constrained on each step (E33).
+     *
+     * A callback rather than a log line because `:core` carries no logger and
+     * should not acquire one; the Android layer wires this to logcat exactly as
+     * it wraps the trace store to time it.
+     */
+    private val onGrounding: (Grounding) -> Unit = {},
+
+    /**
      * Resolves "open X" goals to a package (E21).
      *
      * When it answers, the grammar collapses to the single correct action and
@@ -114,6 +123,35 @@ public class ConstrainedPlanner(
                 screenGrounded -> ScreenGrammar.forScreen(state)
                 else -> ActionGrammar.GBNF
             }
+
+            // Report whether screen grounding actually applied — **E33**.
+            //
+            // D9's lesson is that a system relying on constrained decoding needs
+            // a *positive* check that the constraint is active, because an
+            // absent constraint looks exactly like a satisfied one. That check
+            // existed for the base grammar (validated once at load) and not for
+            // the grammar that is rebuilt every step.
+            //
+            // `ScreenGrammar.forScreen` falls back to the unconstrained base
+            // when the projection offers no labels — a legitimate §17 escape for
+            // a canvas or DRM surface, and indistinguishable in every log from
+            // grounding that worked. On a search screen whose only interactable
+            // element is an unlabelled text field, the planner is silently
+            // unconstrained on `target`, which is exactly where a 1B model
+            // invents elements (E18b).
+            //
+            // Cheap and diagnostic: one line per planning step saying whether
+            // the sampler was narrowed and by how much.
+            onGrounding(
+                when {
+                    grammar == null -> Grounding.Unconstrained
+                    launchGrammar != null -> Grounding.LaunchCollapsed
+                    !screenGrounded -> Grounding.BaseGrammar
+                    ScreenGrammar.isSpecialised(grammar) ->
+                        Grounding.ScreenGrounded(state.elements.count { it.label != null })
+                    else -> Grounding.FellBackUngrounded(state.elements.size)
+                },
+            )
 
             val result = engine.generate(
                 prompt = PlannerPrompt.SYSTEM + "\n\n" + prompt,
@@ -188,4 +226,43 @@ public class ConstrainedPlanner(
         }
         return null
     }
+}
+
+
+/**
+ * How the sampler was constrained for one planning step — **E33**.
+ *
+ * D9's lesson is that constrained decoding needs a *positive* check that the
+ * constraint is active: a grammar llama.cpp rejects is not installed and
+ * generation proceeds unconstrained **with no error**, so an absent constraint
+ * is indistinguishable from a satisfied one. That check existed for the base
+ * grammar, validated once at load, and not for the screen grammar, which is
+ * rebuilt every step from live app labels.
+ */
+public sealed interface Grounding {
+    /** No grammar at all — §14.3's arm A/B configuration. */
+    public data object Unconstrained : Grounding
+
+    /** E21: the goal named an app, so the only legal action is launching it. */
+    public data object LaunchCollapsed : Grounding
+
+    /** Shape constrained, targets free. Screen grounding was switched off. */
+    public data object BaseGrammar : Grounding
+
+    /** Targets restricted to [labels] elements actually on screen (E18). */
+    public data class ScreenGrounded(val labels: Int) : Grounding
+
+    /**
+     * Screen grounding was **asked for and did not apply**.
+     *
+     * The projection offered no usable labels, so `ScreenGrammar` returned the
+     * unconstrained base — a legitimate §17 escape for a canvas or DRM surface,
+     * and the dangerous case everywhere else. On a search screen whose only
+     * interactable element is an unlabelled text field, the planner is free to
+     * invent a target, which is precisely the failure E18b measured.
+     *
+     * [interactables] is how many elements the planner *was* shown, so a reader
+     * can tell "empty screen" from "screen full of unlabelled controls".
+     */
+    public data class FellBackUngrounded(val interactables: Int) : Grounding
 }

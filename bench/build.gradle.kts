@@ -112,7 +112,10 @@ val corpusReport by tasks.registering(JavaExec::class) {
     description = "Report §14.2 metrics from tools/run-corpus.sh output"
     mainClass.set("dev.axon.bench.RunCorpusReport")
     classpath = sourceSets["main"].runtimeClasspath
-    doFirst {
-        args((project.findProperty("csv") as String? ?: "").split(",").filter { it.isNotBlank() })
-    }
+    // Paths on the command line are repo-relative, as a person would type them;
+    // JavaExec otherwise resolves them against bench/.
+    workingDir = rootDir
+    // Resolved at CONFIGURATION time. Reading `project` inside doFirst is
+    // unsupported with the configuration cache, which is on for this build.
+    args((providers.gradleProperty("csv").orNull ?: "").split(",").filter { it.isNotBlank() })
 }

@@ -300,6 +300,12 @@ class AxonAgent(private val context: Context) {
                 planner = eng?.let {
                     ConstrainedPlanner(
                         engine = it,
+                        // E33: say, every step, whether screen grounding
+                        // actually applied. `ScreenGrammar` falls back to the
+                        // unconstrained base when a screen offers no labels,
+                        // and that fallback was invisible -- identical in every
+                        // log to grounding that worked.
+                        onGrounding = { g -> Log.i(TAG, "E33 grounding: $g") },
                         // E21: "open X" resolves to a package, and the grammar
                         // then collapses to that single action. E18b measured a
                         // 1B model failing exactly this choice — it opened the

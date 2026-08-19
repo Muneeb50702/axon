@@ -45,8 +45,15 @@ object CorpusResults {
         val outcome: String,
         val oraclePass: Boolean?,
         val wallMs: Long,
-        val llmCalls: Int,
-        val steps: Int,
+        /** The agent's own measure of the task, or null if it died before reporting. */
+        val agentMs: Long?,
+        /**
+         * Nullable on purpose: a process killed before emitting `TASK_END`
+         * reported nothing, and 0 would read as "made no model calls" — exactly
+         * what a free replay looks like.
+         */
+        val llmCalls: Int?,
+        val steps: Int?,
         val killed: Boolean,
         val detail: String,
     ) {
@@ -54,24 +61,43 @@ object CorpusResults {
         val gated: Boolean get() = outcome == "GATED_CONFIRMATION"
     }
 
-    fun parse(csv: File): List<Row> =
-        csv.readLines()
-            .drop(1)
-            .filter { it.isNotBlank() }
-            .map { line ->
-                val f = splitCsv(line)
-                Row(
-                    task = f.getOrElse(0) { "" },
-                    config = f.getOrElse(1) { "" },
-                    outcome = f.getOrElse(3) { "" },
-                    oraclePass = f.getOrElse(4) { "" }.toIntOrNull()?.let { it == 1 },
-                    wallMs = f.getOrElse(5) { "" }.toLongOrNull() ?: 0L,
-                    llmCalls = f.getOrElse(6) { "" }.toIntOrNull() ?: 0,
-                    steps = f.getOrElse(7) { "" }.toIntOrNull() ?: 0,
-                    killed = f.getOrElse(8) { "" } == "1",
-                    detail = f.getOrElse(9) { "" },
-                )
-            }
+    /**
+     * Parse by **header name**, never by column position.
+     *
+     * The runner gained an `agent_ms` column and every positional index after it
+     * shifted by one, so `llm_calls` silently read the agent's duration and the
+     * report printed an LLM-calls-per-task of 263,987. Absurd enough to notice
+     * here; a column added *after* `llm_calls` would have shifted only `killed`
+     * and produced a plausible wrong number instead.
+     */
+    fun parse(csv: File): List<Row> {
+        val lines = csv.readLines().filter { it.isNotBlank() }
+        if (lines.isEmpty()) return emptyList()
+        val header = splitCsv(lines.first()).map { it.trim() }
+        fun idx(name: String) = header.indexOf(name)
+
+        val iTask = idx("task"); val iConfig = idx("config"); val iOutcome = idx("outcome")
+        val iOracle = idx("oracle_pass"); val iWall = idx("wall_ms"); val iAgent = idx("agent_ms")
+        val iLlm = idx("llm_calls"); val iSteps = idx("steps"); val iKilled = idx("killed")
+        val iDetail = idx("detail")
+
+        return lines.drop(1).map { line ->
+            val f = splitCsv(line)
+            fun at(i: Int) = if (i >= 0) f.getOrElse(i) { "" } else ""
+            Row(
+                task = at(iTask),
+                config = at(iConfig),
+                outcome = at(iOutcome),
+                oraclePass = at(iOracle).toIntOrNull()?.let { it == 1 },
+                wallMs = at(iWall).toLongOrNull() ?: 0L,
+                agentMs = at(iAgent).toLongOrNull(),
+                llmCalls = at(iLlm).toIntOrNull(),
+                steps = at(iSteps).toIntOrNull(),
+                killed = at(iKilled) == "1",
+                detail = at(iDetail),
+            )
+        }
+    }
 
     /** Minimal CSV split honouring the one quoted field the runner emits. */
     private fun splitCsv(line: String): List<String> {
@@ -123,10 +149,10 @@ object CorpusResults {
                     // Placeholder steps: the COUNT is real, the contents are not.
                     // Nothing downstream reads a step's contents — see the class
                     // comment.
-                    steps = List(row.steps) { placeholderStep() },
+                    steps = List(row.steps ?: 0) { placeholderStep() },
                     outcome = runCatching { TaskOutcome.valueOf(row.outcome) }
                         .getOrDefault(TaskOutcome.ERROR),
-                    llmCalls = row.llmCalls,
+                    llmCalls = row.llmCalls ?: 0,
                     totalMs = row.wallMs,
                     device = "tecno-ck6n",
                     model = "gemma-3-1b-it-Q4_K_M",
@@ -190,7 +216,7 @@ object RunCorpusReport {
                         (if (r.gated) "—" else if (r.oraclePass == true) "PASS" else "fail").padEnd(9) +
                         r.outcome.padEnd(18) +
                         (if (r.gated) "—" else "${r.wallMs / 1000}s").padEnd(10) +
-                        (if (r.gated) "—" else "${r.llmCalls}"),
+                        (if (r.gated) "—" else r.llmCalls?.toString() ?: "?"),
                 )
             }
         }
