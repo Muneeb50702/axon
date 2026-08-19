@@ -2490,6 +2490,23 @@ same reason `TargetBy.wire` and `ExportGrammar` exist: a second copy of the goal
 and oracles would drift silently, and the failure would be a benchmark scoring
 tasks the system was never asked to do.
 
+### These two passes are two rows of §14.3's table
+
+Worth stating plainly, because "COLD" and "D" sound like ad-hoc labels and are
+not. `RunConfig` switches **only** skill reuse; the grammar and the verifier are
+on in every shipping configuration. So:
+
+| pass | grammar | verifier | skill replay | §14.3 row |
+|---|---|---|---|---|
+| `COLD` | ✓ | ✓ | ✗ | **arm C** |
+| `D` | ✓ | ✓ | ✓ | **arm D** |
+
+C-vs-D is precisely the comparison that isolates skill compilation, which is
+C1′. It is the pair the project most needs and the one it can run today; arms A
+and B need the grammar switch on the device path (measured separately by E4b on
+the acceptance harness, not over this corpus), and arm E needs the larger model
+to load at all (D10, untested).
+
 ### Two tasks are excluded from the denominator, on purpose
 
 `whatsapp_send_message` and `call_contact` are irreversible acts, and §16
