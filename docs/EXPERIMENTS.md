@@ -2857,6 +2857,65 @@ and it is exactly what no single mechanism's tests can check.
 
 ---
 
+## E36 — The larger model runs on this device, and costs 2.3× for the same result
+
+*2026-08-19 · TECNO Camon 20 · `gemma-4-E2B-it-Q4_K_M`, 3.11 GB*
+
+D10 designated the E2B as §14.3's arm E — the baseline D must beat — and it had
+**never been run**, because `findModel()` selected the smallest GGUF present and
+nothing could ask for another. E6b made the prediction worth testing rather than
+assuming: the 1B already sits at **1.08 GB resident** on a phone with ~3.9 GB
+available and 1.6 GB in swap, and `system_server` reaps the largest tenant in
+batches.
+
+### It loads, and it survives
+
+**The prediction was wrong.** The 3.11 GB model mmap-loaded in ~13 s and ran a
+task to completion without being killed.
+
+| | 1B (`gemma-3-1b`) | 3B (`gemma-4-E2B`) |
+|---|---|---|
+| file | 806 MB | 3.11 GB |
+| peak PSS | 1.08 GB | **2.24 GB** |
+| `open whatsapp` | **72.3 s** / 1 call | **163.1 s** / 1 call |
+| outcome | SUCCESS | SUCCESS |
+
+Peak PSS is **2.1×** the 1B's while the file is 3.9× larger — mmap means the
+resident set tracks what is touched, not the file. `MemAvailable` barely moved
+(3.9 GB → 3.86 GB), because most of that footprint is evictable page cache, which
+is also why the process survived where E6b's account might have predicted a kill.
+
+### The cost, against both other arms
+
+| configuration | result | cost |
+|---|---|---|
+| arm E — 3.1 GB, no reuse | SUCCESS | 163.1 s / 1 call |
+| arm C — 806 MB, no reuse | SUCCESS | 72.3 s / 1 call |
+| arm D — 806 MB + reuse | SUCCESS | **2.1 s / 0 calls** |
+
+**2.3× slower for an identical outcome**, and arm D is **78× faster than arm E**.
+That ratio tracks E2's microbenchmark (157 s vs 65 s per generation), so the gap
+is a property of the models rather than of this task.
+
+### What this does *not* establish
+
+**One task, and the wrong kind of task for the question.** `open whatsapp` is a
+launch goal, so E21 collapses the grammar to a single legal action: both models
+are choosing between one option and both succeed trivially. This measures
+**latency, not capability**, and §14.3's claim — that D meets or beats E on task
+*success* — is untouched by it.
+
+The capability question is §3.1's substitution surface: does the larger model
+succeed on the navigation tasks where the 1B failed? That needs the corpus
+through arm E, which is running.
+
+**Also not arm E as §14.3 defines it.** That row specifies grammar ✗, verifier ✗,
+replay ✗; the device has switches for model and replay only, so this is the
+shipping configuration with a larger model. Naming it "arm E" without that
+qualifier would overstate what was varied.
+
+---
+
 ## Open measurements
 
 Required before publication. Listed here so gaps are visible rather than
