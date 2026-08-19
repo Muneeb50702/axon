@@ -1,6 +1,7 @@
 package dev.axon.core.planner
 
 import dev.axon.core.inference.ActionGrammar
+import dev.axon.core.inference.Gbnf
 import dev.axon.core.inference.InferenceEngine
 import dev.axon.core.inference.ScreenGrammar
 import dev.axon.core.model.ActionMenu
@@ -73,6 +74,18 @@ public class ConstrainedPlanner(
     private val onGrounding: (Grounding) -> Unit = {},
 
     /**
+     * Does this grammar parse? Optional, and worth wiring — **E33**.
+     *
+     * D9's failure mode: llama.cpp does not install a sampler for a grammar it
+     * rejects and generation proceeds **unconstrained with no error**, so C3 is
+     * silently absent. The app validates the base grammar once at load and has
+     * never validated the screen grammar, which is rebuilt every step from live
+     * app labels — the only one built from untrusted input, and the only one
+     * that can fail in the field.
+     */
+    private val validateGrammar: ((Gbnf) -> Boolean)? = null,
+
+    /**
      * Resolves "open X" goals to a package (E21).
      *
      * When it answers, the grammar collapses to the single correct action and
@@ -142,13 +155,29 @@ public class ConstrainedPlanner(
             //
             // Cheap and diagnostic: one line per planning step saying whether
             // the sampler was narrowed and by how much.
+            // Check that the constraint is installable BEFORE relying on it.
+            val grammarParses = grammar?.let { g -> validateGrammar?.invoke(g) }
+
             onGrounding(
                 when {
+                    grammar != null && grammarParses == false ->
+                        Grounding.GrammarRejected
                     grammar == null -> Grounding.Unconstrained
                     launchGrammar != null -> Grounding.LaunchCollapsed
                     !screenGrounded -> Grounding.BaseGrammar
                     ScreenGrammar.isSpecialised(grammar) ->
-                        Grounding.ScreenGrounded(state.elements.count { it.label != null })
+                        Grounding.ScreenGrounded(
+                            labels = state.elements.count { it.label != null },
+                            // Which production: E31's complete {by,value} pairs,
+                            // or the older value-only grounding that lets the
+                            // model pair a real label with a `by` that cannot
+                            // resolve it. `isSpecialised` accepts both, so
+                            // without this the log cannot tell them apart --
+                            // and that distinction is exactly what a
+                            // "no element matching text=X ... this screen has:
+                            // X" failure turns on.
+                            paired = "screen-target ::=" in grammar.source,
+                        )
                     else -> Grounding.FellBackUngrounded(state.elements.size)
                 },
             )
@@ -168,6 +197,44 @@ public class ConstrainedPlanner(
 
             val action = parse(result.text)
             if (action != null) {
+                // Did the sampler actually ENFORCE the grammar? — **E33**.
+                //
+                // Everything upstream reports that a paired, parseable screen
+                // grammar was installed, and the planner still emitted targets
+                // the precondition gate rejects with the self-contradictory
+                // "no element matching text=X ... this screen has: X". Under
+                // E31's grounding that pair is not in the alternation at all,
+                // so either the constraint is not being applied or an
+                // assumption about it is wrong.
+                //
+                // Checking the *output* against the same evidence that built
+                // the grammar settles it without trusting either. A violation
+                // means C3 is absent for that step while every other signal
+                // says it is present — which is exactly the class of failure
+                // D9 warns about and nothing else here could detect.
+                val emitted = (action as? dev.axon.core.model.DeviceAction.Tap)?.target
+                if (grammar != null && screenGrounded && launchGrammar == null && emitted != null) {
+                    val permitted = state.elements.any {
+                        it.label == emitted.value && it.labelBy == emitted.by
+                    }
+                    if (!permitted) {
+                        onGrounding(
+                            Grounding.GrammarViolated(
+                                by = emitted.by.wire,
+                                value = emitted.value,
+                                permittedPairs = state.elements.count { it.labelBy != null },
+                                // What the engine says it did. If a violation
+                                // arrives with `constrained = true`, the engine
+                                // believes it applied a sampler that plainly did
+                                // not bind, which localises the fault to the
+                                // JNI/llama.cpp layer rather than to how the
+                                // grammar was built.
+                                engineSaysConstrained = result.constrained,
+                            ),
+                        )
+                    }
+                }
+
                 return PlanDecision(
                     action = action,
                     llmCalls = calls,
@@ -240,6 +307,31 @@ public class ConstrainedPlanner(
  * rebuilt every step from live app labels.
  */
 public sealed interface Grounding {
+    /**
+     * The sampler emitted a target the grammar did not permit — **E33**.
+     *
+     * Reported by checking the parsed action against the same element list the
+     * grammar was built from. If this ever fires, the constraint was built,
+     * parsed and passed to the engine and **still did not bind**: C3's
+     * guarantee is absent for that step while every other diagnostic says it
+     * holds.
+     */
+    public data class GrammarViolated(
+        val by: String,
+        val value: String,
+        val permittedPairs: Int,
+        val engineSaysConstrained: Boolean,
+    ) : Grounding
+
+    /**
+     * The grammar was built and **llama.cpp will not install it**.
+     *
+     * Generation then runs unconstrained with no error (D9), so every guarantee
+     * C3 makes is absent for that step while every log says a grammar was used.
+     * The single most important thing this diagnostic can report.
+     */
+    public data object GrammarRejected : Grounding
+
     /** No grammar at all — §14.3's arm A/B configuration. */
     public data object Unconstrained : Grounding
 
@@ -249,8 +341,14 @@ public sealed interface Grounding {
     /** Shape constrained, targets free. Screen grounding was switched off. */
     public data object BaseGrammar : Grounding
 
-    /** Targets restricted to [labels] elements actually on screen (E18). */
-    public data class ScreenGrounded(val labels: Int) : Grounding
+    /**
+     * Targets restricted to [labels] elements actually on screen (E18).
+     *
+     * [paired] distinguishes E31's complete `{by, value}` grounding from the
+     * older value-only form, which permits a real on-screen label paired with a
+     * selector kind that cannot resolve it.
+     */
+    public data class ScreenGrounded(val labels: Int, val paired: Boolean) : Grounding
 
     /**
      * Screen grounding was **asked for and did not apply**.

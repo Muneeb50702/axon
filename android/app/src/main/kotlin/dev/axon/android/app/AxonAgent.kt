@@ -306,6 +306,11 @@ class AxonAgent(private val context: Context) {
                         // and that fallback was invisible -- identical in every
                         // log to grounding that worked.
                         onGrounding = { g -> Log.i(TAG, "E33 grounding: $g") },
+                        // The screen grammar is the only one built from live app
+                        // labels, so it is the only one that can fail to parse
+                        // in the field -- and a rejected grammar is not an
+                        // error, it is silent unconstrained generation (D9).
+                        validateGrammar = { g -> it.validateGrammar(g) },
                         // E21: "open X" resolves to a package, and the grammar
                         // then collapses to that single action. E18b measured a
                         // 1B model failing exactly this choice — it opened the

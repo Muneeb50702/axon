@@ -1,0 +1,3 @@
+--------- beginning of main
+08-19 11:59:05.321 10065 10564 I AxonAgent: run 'open whatsapp' under config COLD (skillReplay=false)
+08-19 11:59:05.671 10065 10564 I AxonAgent: E33 grounding: LaunchCollapsed

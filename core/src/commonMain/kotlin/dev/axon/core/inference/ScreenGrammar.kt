@@ -92,8 +92,21 @@ public object ScreenGrammar {
         // measurably making.
         val selectors = state.elements
             .mapNotNull { element ->
-                val label = element.label?.trim() ?: return@mapNotNull null
-                if (label.isEmpty() || label.length > MAX_LABEL_LENGTH) return@mapNotNull null
+                // The RAW label, not a trimmed one — **E33**.
+                //
+                // This trimmed before emitting, and `UiNode.matches` compares the
+                // raw attribute, so on a screen whose label is `"Power "` the
+                // grammar offered `"Power"`, the model emitted it (correctly — it
+                // was the only thing on offer) and the gate refused with
+                // *no element matching text="Power" … this screen has: Power*.
+                // Measured on device: three violations in one run.
+                //
+                // Trimming is still right for *deciding whether a label is
+                // usable* — a whitespace-only label names nothing — so the filter
+                // below trims and the emitted literal does not.
+                val label = element.label ?: return@mapNotNull null
+                val trimmed = label.trim()
+                if (trimmed.isEmpty() || label.length > MAX_LABEL_LENGTH) return@mapNotNull null
                 // Provenance unknown — an element built directly rather than
                 // projected from a tree. Fall back to the weaker grounding
                 // rather than guessing a `by` that may not resolve.
@@ -143,10 +156,11 @@ public object ScreenGrammar {
      * grammar here would silently disable E18 for those callers.
      */
     private fun legacyForScreen(state: CompactState): Gbnf {
+        // Raw labels, for the same reason as above (E33): the gate matches the
+        // attribute as the tree reports it.
         val labels = state.elements
             .mapNotNull { it.label }
-            .map { it.trim() }
-            .filter { it.isNotEmpty() && it.length <= MAX_LABEL_LENGTH }
+            .filter { it.trim().isNotEmpty() && it.length <= MAX_LABEL_LENGTH }
             .distinct()
             .take(MAX_LABELS)
 

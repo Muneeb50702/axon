@@ -169,6 +169,38 @@ class GroundedSelectorTest {
         assertEquals(ActionGrammar.GBNF.source, g.source)
     }
 
+    @Test
+    fun `a label with surrounding whitespace is offered exactly as the gate will match it`() {
+        // **E33's root cause.** ScreenGrammar trimmed the label before putting it
+        // in the alternation; `UiNode.matches` compares the raw attribute. So on
+        // a screen whose label is "Power " the grammar offered "Power", the model
+        // emitted "Power" -- correctly, it was the only thing on offer -- and the
+        // gate refused it with
+        //
+        //   no element matching text="Power" ... this screen has: Power
+        //
+        // the same self-contradiction E31 fixed for `by`, reaching it through
+        // whitespace instead. Real OEM skins ship these: this device's launcher
+        // carries a label 'PiKaChUu :) ' with a trailing space.
+        //
+        // Measured on device before the fix: three GrammarViolated reports in one
+        // run, each `by=text value=Power` against 24 permitted pairs.
+        val padded = UiNode(
+            index = 0, role = "button",
+            text = "Power ", contentDescription = null,
+            bounds = Bounds(0, 0, 100, 40), clickable = true,
+        )
+        val tree = UiTree("com.android.settings", null, listOf(padded), capturedAtMs = 0)
+        val targets = screenTargets(ScreenGrammar.forScreen(CompactState.from(tree)))
+
+        // The grammar must offer the raw label, trailing space and all, because
+        // that is the string the gate will compare against.
+        assertTrue(
+            "Power " in targets,
+            "the grammar offered a trimmed label the gate cannot match; got:\n$targets",
+        )
+    }
+
     // ------------------------------------------------------------- wire ------
 
     @Test

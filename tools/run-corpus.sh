@@ -45,6 +45,8 @@ OUT="${OUT:-bench/results/E8-corpus-${CONFIG}.csv}"
 # -- which is exactly what happened once, producing a run that appeared to stall
 # for twenty minutes because each process kept clearing the log the other was
 # waiting on. A benchmark that can be started twice by accident will be.
+LOGDIR="${LOGDIR:-bench/results/logs}"
+mkdir -p "$LOGDIR" 2>/dev/null
 LOCK="${LOCK:-/tmp/axon-corpus.lock}"
 if ! mkdir "$LOCK" 2>/dev/null; then
   echo "another corpus run holds $LOCK -- refusing to start a second." >&2
@@ -54,7 +56,7 @@ fi
 trap 'rmdir "$LOCK" 2>/dev/null' EXIT INT TERM
 
 mkdir -p "$(dirname "$OUT")"
-[ -f "$OUT" ] || echo "task,config,attempted_at,outcome,oracle_pass,wall_ms,agent_ms,llm_calls,steps,killed,detail" > "$OUT"
+[ -f "$OUT" ] || echo "task,config,attempted_at,outcome,oracle_pass,wall_ms,agent_ms,llm_calls,steps,killed,detail,grounding" > "$OUT"
 
 # A task is "done" unless its only outcomes so far were OS kills and we were
 # asked to retry those.
@@ -165,6 +167,20 @@ for c in json.loads(sys.argv[1]): print(c)
 " "$setupcmds")
   sleep 2
   adb logcat -c >/dev/null 2>&1
+  # STREAM a tag-filtered log to a host file for the whole task.
+  #
+  # The device ring buffer is 256 KiB and `adb logcat -G` does not survive a
+  # reinstall, so during a 400 s planning run AxonLlama's output rotates
+  # everything else away. Polling `logcat -d` therefore MISSED markers that were
+  # genuinely emitted: one task recorded outcome=NONE for a run whose oracle
+  # passed, and the E33 grounding lines vanished entirely. Filtering by tag cuts
+  # the volume by orders of magnitude, and writing to the host makes the record
+  # immune to rotation.
+  local logfile; logfile=$(mktemp /tmp/axon-task-XXXXXX.log)
+  adb logcat -c >/dev/null 2>&1
+  adb logcat -s AxonAgent:I AxonGateway:I AxonA11y:I </dev/null > "$logfile" 2>/dev/null &
+  local logpid=$!
+
   local t0 killed=0 outcome="NONE"
   t0=$(date +%s%3N)
 
@@ -179,26 +195,44 @@ for c in json.loads(sys.argv[1]): print(c)
   local started=0 t_wait
   t_wait=$(date +%s%3N)
   while [ $(( $(date +%s%3N) - t_wait )) -lt 20000 ]; do
-    if adb logcat -d </dev/null 2>/dev/null | grep -q "AxonAgent: run '"; then started=1; break; fi
-    if adb logcat -d </dev/null 2>/dev/null | grep -q "already running; ignoring"; then break; fi
+    if grep -q "AxonAgent: run '" "$logfile" 2>/dev/null; then started=1; break; fi
+    if grep -q "already running; ignoring" "$logfile" 2>/dev/null; then break; fi
     sleep 2
   done
   if [ "$started" != 1 ]; then
     echo "    REFUSED: the gateway did not start '$id' (busy or crashed); recorded, not timed" >&2
-    echo "$id,$CONFIG,$(date -Iseconds),NOT_STARTED,,,,,0,\"gateway did not accept the request\"" >> "$OUT"
+    echo "$id,$CONFIG,$(date -Iseconds),NOT_STARTED,,,,,,0,\"gateway did not accept the request\",\"\"" >> "$OUT"
     return
   fi
 
   local deadline=$(( t0 + TIMEOUT_S * 1000 ))
+  local endline=""
   while :; do
     # TASK_END, not the trace write. A clean replay records NO trace (E24b),
     # so watching for one makes every successful replay look like a hang.
-    if adb logcat -d 2>/dev/null | grep -q "AxonGateway.*TASK_END"; then break; fi
-    if ! adb shell pidof "$PKG" >/dev/null 2>&1; then killed=1; break; fi
+    #
+    # CAPTURED here, at the moment it is seen, rather than re-grepped after the
+    # task. logcat is cleared per task and its buffer is live, so a later read
+    # can miss a line that was present: open_camera's retry recorded
+    # outcome=NONE for a run whose oracle passed, purely because the marker had
+    # rotated away before it was parsed.
+    endline=$(grep "TASK_END" "$logfile" 2>/dev/null | tail -1)
+    [ -n "$endline" ] && break
+    if ! adb shell pidof "$PKG" </dev/null >/dev/null 2>&1; then killed=1; break; fi
     [ "$(date +%s%3N)" -gt "$deadline" ] && { outcome="TIMEOUT"; break; }
     sleep 5
   done
   local wall=$(( $(date +%s%3N) - t0 ))
+  kill "$logpid" 2>/dev/null; wait "$logpid" 2>/dev/null
+
+  # E33: did screen grounding actually apply on each planning step? Kept per
+  # task, because "the constraint was active" is a claim that needs evidence
+  # rather than an assumption (D9).
+  local grounding
+  grounding=$(grep -o "E33 grounding: [A-Za-z]*" "$logfile" 2>/dev/null \
+                | sed 's/E33 grounding: //' | sort | uniq -c \
+                | awk '{printf "%s x%s ", $2, $1}')
+  [ -n "$LOGDIR" ] && cp "$logfile" "$LOGDIR/$id-$CONFIG.log" 2>/dev/null
 
   # Let the UI settle before asking what state the device is in.
   sleep 3
@@ -243,8 +277,7 @@ for o in json.loads(sys.argv[1]): print(o['type']+'\x1f'+o['value'])
   # AXON's own numbers, for context only -- never used to decide pass/fail.
   # Taken from the TASK_END marker, which is emitted on every path including a
   # clean replay; the database only has a row when the task was PLANNED.
-  local llm="" steps="" agent_ms="" endline
-  endline=$(adb logcat -d 2>/dev/null | grep "AxonGateway.*TASK_END" | tail -1)
+  local llm="" steps="" agent_ms=""
   if [ -n "$endline" ]; then
     outcome=$(echo "$endline" | sed -nE 's/.*outcome=([A-Z_]+).*/\1/p')
     llm=$(echo "$endline" | sed -nE 's/.*llm=([0-9]+).*/\1/p')
@@ -260,7 +293,7 @@ for o in json.loads(sys.argv[1]): print(o['type']+'\x1f'+o['value'])
   local _unused
   [ "$killed" = 1 ] && outcome="PROCESS_KILLED"
 
-  echo "$id,$CONFIG,$(date -Iseconds),$outcome,$pass,$wall,$agent_ms,$llm,$steps,$killed,\"$detail\"" >> "$OUT"
+  echo "$id,$CONFIG,$(date -Iseconds),$outcome,$pass,$wall,$agent_ms,$llm,$steps,$killed,\"$detail\",\"$grounding\"" >> "$OUT"
   printf '  %-24s oracle=%s  outcome=%-16s %6sms  llm=%s\n' "$id" "$pass" "$outcome" "$wall" "$llm"
 }
 
@@ -285,7 +318,7 @@ while IFS=$'\x1f' read -r -u 3 id goal oracle conf start setupcmds stateassert; 
   if have_result "$id"; then echo "  $id (already recorded, skipping)"; continue; fi
   if [ "$conf" = "True" ]; then
     echo "  $id -- requires confirmation (§16); not runnable unattended, recorded as GATED"
-    echo "$id,$CONFIG,$(date -Iseconds),GATED_CONFIRMATION,,,,,,0,\"irreversible action; §16 requires the user to approve\"" >> "$OUT"
+    echo "$id,$CONFIG,$(date -Iseconds),GATED_CONFIRMATION,,,,,,0,\"irreversible action; §16 requires the user to approve\",\"\"" >> "$OUT"
     continue
   fi
   run_task "$id" "$goal" "$oracle" "$start" "$setupcmds" "$stateassert"
