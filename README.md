@@ -98,7 +98,7 @@ rather than a capability one.
 | 7 | AXON-Bench + ablation matrix — **C3/C5** | ◐ **core tier run through arms C and D on device (E8)**; robustness and long-horizon tiers not run; verifier switch still has no device path |
 | 8 | Hardening, thesis, defence | |
 
-**235 tests, 0 failures, none needing a device.** Everything above the
+**289 tests, 0 failures, none needing a device.** Everything above the
 `DeviceDriver` seam — grammar, gate, verifier, compiler, replay, composition,
 skill health, the §16 confirmation policy and the whole benchmark scoring path —
 is exercised on the JVM in CI.
