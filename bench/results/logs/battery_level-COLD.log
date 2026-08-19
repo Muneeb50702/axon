@@ -1,10 +1,3 @@
 --------- beginning of main
-08-19 12:40:21.376 28198 28198 I AxonA11y: AXON accessibility service connected
-08-19 12:40:23.445 28198 28219 I AxonAgent: run 'show me the battery percentage' under config COLD (skillReplay=false)
-08-19 12:40:23.883 28198 28219 I AxonAgent: E33 grounding: ScreenGrounded(labels=17, paired=true)
-08-19 12:41:44.820 28198 28219 I AxonAgent: E33 grounding: ScreenGrounded(labels=1, paired=true)
-08-19 12:42:52.435 28198 28219 I AxonAgent: E33 grounding: ScreenGrounded(labels=24, paired=true)
-08-19 12:44:33.396 28198 28219 I AxonAgent: E33 grounding: ScreenGrounded(labels=1, paired=true)
-08-19 12:45:49.346 28198 28219 I AxonAgent: E33 grounding: ScreenGrounded(labels=1, paired=true)
-08-19 12:47:08.657 28198 28219 I AxonAgent: E22b trace write: 5 step(s) in 38 ms
-08-19 12:47:08.677 28198 28198 I AxonGateway: TASK_END utterance='show me the battery percentage' config=COLD outcome=ESCALATED steps=5 llm=5 ms=405169
+08-19 15:59:31.205  3803 14129 I AxonAgent: run 'show me the battery percentage' under config COLD (skillReplay=false)
+08-19 15:59:31.601  3803 14129 I AxonAgent: E33 grounding: ScreenGrounded(labels=17, paired=true)

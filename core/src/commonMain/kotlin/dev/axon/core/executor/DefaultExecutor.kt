@@ -52,6 +52,25 @@ public class DefaultExecutor(
     private val budget: Int = DEFAULT_BUDGET,
 
     /**
+     * Check the post-condition after acting, or assume the action worked (§14.3).
+     *
+     * `false` is arms A and B: the executor dispatches and reports success
+     * without looking, which is what an agent without C2 does. It is the only
+     * §14.3 switch that had **no device path at all**, so the verifier's
+     * contribution could not be measured over the corpus — the row was in the
+     * matrix and unreachable, the same shape as E29's capability check and
+     * E24c's cold arm before `RunConfig`.
+     *
+     * Turning it off removes exactly the verifier and nothing else: the
+     * precondition gate still runs (that is a separate defence, and a separate
+     * row), the action is still dispatched, and the settle delay is still
+     * observed so the *next* step perceives a settled screen rather than an
+     * animating one. Skipping the settle too would conflate "no verifier" with
+     * "no waiting" and make arm A slower *and* blinder for the wrong reason.
+     */
+    private val verify: Boolean = true,
+
+    /**
      * How long to let the UI settle before verifying.
      *
      * Not a fudge factor — it is the difference between measuring the outcome and
@@ -190,12 +209,24 @@ public class DefaultExecutor(
         }
 
         // ---- settle then verify ---------------------------------------------
-        val (after, verdict) = settleAndVerify(action, state)
+        //
+        // With the verifier off (§14.3 arms A/B) the screen is still allowed to
+        // settle — the next step must perceive a settled UI either way — but the
+        // outcome is assumed rather than checked, which is precisely what C2
+        // exists to replace.
+        val (after, verdict) = if (verify) {
+            settleAndVerify(action, state)
+        } else {
+            delay(settleMs)
+            driver.observe() to null
+        }
 
         return StepOutcome(
             action = action,
             preOk = true,
-            postOk = verdict is VerifyResult.Match,
+            // Unverified steps report success: an agent without C2 believes its
+            // actions worked, and that belief is the thing being ablated.
+            postOk = if (verify) verdict is VerifyResult.Match else true,
             actResult = actResult,
             verifyResult = verdict,
             latencyMs = nowMs() - started,

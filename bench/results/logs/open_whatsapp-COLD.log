@@ -1,5 +1,5 @@
 --------- beginning of main
-08-19 14:17:21.777 29481  5817 I AxonAgent: run 'open whatsapp' under config COLD (skillReplay=false)
-08-19 14:17:22.089 29481  5817 I AxonAgent: E33 grounding: LaunchCollapsed
-08-19 14:18:26.558 29481  5817 I AxonAgent: E22b trace write: 1 step(s) in 21 ms
-08-19 14:18:26.639 29481 29481 I AxonGateway: TASK_END utterance='open whatsapp' config=COLD outcome=SUCCESS steps=1 llm=1 ms=64758
+08-19 15:56:35.380  3803 14129 I AxonAgent: run 'open whatsapp' under config COLD (skillReplay=false)
+08-19 15:56:35.753  3803 14129 I AxonAgent: E33 grounding: LaunchCollapsed
+08-19 15:59:17.651  3803 14129 I AxonAgent: E22b trace write: 1 step(s) in 9 ms
+08-19 15:59:17.714  3803  3803 I AxonGateway: TASK_END utterance='open whatsapp' config=COLD outcome=SUCCESS steps=1 llm=1 ms=162262

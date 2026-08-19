@@ -29,21 +29,27 @@ package dev.axon.core.runtime
  * the *request* rather than of the stored state: the skills stay exactly where
  * they are, and one run is told not to consult them.
  *
- * ## Only what is wired
+ * ## All three switches, each with a device path
  *
- * §14.3 switches three things — grammar, verifier, skill replay. This declares
- * **one**, deliberately.
+ * §14.3 switches three things — grammar, verifier, skill replay — and this
+ * declares all three. It began with **only** `skillReplay`, deliberately, because
+ * a config field that reads as a working switch and silently changes nothing is
+ * E29's bug wearing a disguise: there, three §16 safety claims were false
+ * precisely because a mechanism existed with no path from it to the user.
  *
- * The grammar arm already has a device path: `ConstrainedPlanner(constrained =
- * false)`, driven by the instrumented acceptance test that produced E4/E4b. A
- * second, unused route to the same switch would be a flag whose behaviour nobody
- * checks. The verifier arm has no device path yet and is not claimed to.
+ * The other two were added when their paths were built, not before:
  *
- * That restraint is the direct lesson of E29: three §16 safety claims were false
- * *because* a mechanism existed in the code with no path from it to the user, and
- * every component behaved correctly in isolation the whole time. A config field
- * that reads as a working switch and silently changes nothing is the same bug
- * wearing the same disguise. When the verifier arm is wired, it gets a field.
+ * | switch | how it is applied | arms |
+ * |---|---|---|
+ * | `grammar` | `ConstrainedPlanner(constrained = false)` | A |
+ * | `verifier` | `DefaultExecutor(verify = false)` | A, B |
+ * | `skillReplay` | COMPOSE and REPLAY skipped in `AxonRuntime` | A, B, C |
+ *
+ * The grammar previously had a device path only through the instrumented
+ * acceptance test behind E4/E4b, which measures *generations* rather than tasks;
+ * the verifier had none at all. So arms A and B existed in the matrix and could
+ * not be run over the corpus — the row was there and unreachable, the same shape
+ * as E24c's cold arm before this file existed.
  */
 public data class RunConfig(
     /**
@@ -73,10 +79,42 @@ public data class RunConfig(
      * for.
      */
     public val skillReplay: Boolean = true,
+
+    /**
+     * Constrain action emission with the GBNF grammar (C3). §14.3 arm A: false.
+     *
+     * The grammar had a device path only through the instrumented acceptance
+     * test that produced E4/E4b — which measures *generations*, not tasks — so
+     * arms A and B could never be run over the corpus. Adding it here is what
+     * makes the §14.3 matrix reachable from the benchmark rather than from a
+     * separate harness answering a narrower question.
+     */
+    public val grammar: Boolean = true,
+
+    /**
+     * Check post-conditions after acting (C2). §14.3 arms A and B: false.
+     *
+     * Was the only switch in the matrix with **no device path at all**: the row
+     * existed and was unreachable, the same shape as E29's capability check and
+     * E24c's cold arm before this file existed.
+     */
+    public val verifier: Boolean = true,
 ) {
     public companion object {
         /** The shipping configuration: everything on (§14.3 arm D). */
         public val DEFAULT: RunConfig = RunConfig(id = "D", skillReplay = true)
+
+        /** §14.3 arm A — naive: no grammar, no verifier, no reuse. */
+        public val A: RunConfig =
+            RunConfig(id = "A", skillReplay = false, grammar = false, verifier = false)
+
+        /** §14.3 arm B — grammar only. */
+        public val B: RunConfig =
+            RunConfig(id = "B", skillReplay = false, grammar = true, verifier = false)
+
+        /** §14.3 arm C — grammar and verifier, no reuse. */
+        public val C: RunConfig =
+            RunConfig(id = "C", skillReplay = false, grammar = true, verifier = true)
 
         /**
          * Plan from scratch, ignoring anything learned (§14.3 arms A–C).
@@ -98,7 +136,15 @@ public data class RunConfig(
          */
         public fun of(id: String?): RunConfig = when (id?.uppercase()) {
             null, "", "D" -> DEFAULT
-            "COLD", "A", "B", "C" -> COLD.copy(id = id.uppercase())
+            "A" -> A
+            "B" -> B
+            "C" -> C
+            // Named for what it does to the run rather than for an arm letter.
+            // Identical to C in switches; kept because every cold measurement
+            // taken before the grammar and verifier switches existed used this
+            // name, and silently re-labelling them would rewrite their
+            // provenance.
+            "COLD" -> COLD
             else -> DEFAULT
         }
     }

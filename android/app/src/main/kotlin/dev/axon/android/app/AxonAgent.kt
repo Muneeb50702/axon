@@ -316,12 +316,20 @@ class AxonAgent(private val context: Context) {
                         // 1B model failing exactly this choice — it opened the
                         // dialer.
                         appResolver = appResolver,
+                        // §14.3 arm A turns the grammar off. Everything else
+                        // about the planner stays identical, so a difference
+                        // between arms A and B is attributable to the grammar
+                        // rather than to two subtly different programs.
+                        constrained = config.grammar,
                     )
                 },
                 executor = DefaultExecutor(
                     driver,
                     nowMs = System::currentTimeMillis,
                     confirmation = confirmationGate,
+                    // §14.3 arms A and B run without C2: the executor dispatches
+                    // and assumes the action worked.
+                    verify = config.verifier,
                 ),
                 skills = skills,
                 traces = timedTraces,
