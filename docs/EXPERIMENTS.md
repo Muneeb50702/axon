@@ -2507,9 +2507,60 @@ every successful replay look like a hang until the timeout expired, i.e. the
 benchmark was unrunnable on exactly the path C1′ is about. The gateway now emits
 an explicit `TASK_END` marker on every path.
 
+### Four defects found before the first trustworthy number
+
+Building the harness found more than running it did, and every one of these
+produced output that **looked correct**. They are recorded because a benchmark's
+credibility rests on what was checked before the numbers were believed, and
+because each generalises past this project.
+
+**1. An oracle that was already true.** `open_camera`'s success oracle was
+`text_matches("camera")`, and the launcher displays a "Camera" icon — so the
+task passed on the home screen with the agent having done nothing.
+
+This is the worst shape a benchmark defect can take. A free success is added to
+**every arm equally**, so it inflates absolute task-success rate while leaving
+the comparisons *between* arms intact — nothing in an ablation table would look
+wrong. The corpus's own documentation claims read-only tasks "have oracles that
+cannot be satisfied by accident"; this one was satisfied by the initial
+condition.
+
+`tools/audit-oracles.sh` now evaluates every oracle against a real home-screen
+dump before a run is trusted. One of ten was defective; the other nine were
+fine. The audit is permanent, because the bad oracle looks perfectly reasonable
+in source and was only visible against the device.
+
+**2. `adb` eats the loop's stdin.** With the task list on stdin, the first `adb`
+call inside the loop consumed every remaining line. **Every pass ran exactly one
+task and then exited cleanly**, reporting success having silently skipped eight.
+It cost three restarts to find, because "ran once, exited 0" reads as a finished
+run rather than a bug. The task list now arrives on a dedicated file descriptor.
+
+**3. A refused request is indistinguishable from an accepted one.** The gateway
+declines a second concurrent task and says so only in its own log, so the runner
+started timing, saw the *previous* task's completion marker, and recorded **31 s
+for a run the agent itself measured at 454 s**. It now confirms a new task
+actually started, and records `NOT_STARTED` rather than a fabricated duration.
+
+**4. Two clocks that disagreed silently.** Host wall-clock and the agent's own
+`ms=` are now both recorded. Defect 3 was visible only because they differed by
+15×; keeping one would have hidden it.
+
+### Two runner properties that are load-bearing
+
+- **A lock.** Two concurrent passes drove the same phone and the same results
+  file, interleaving `logcat -c`, HOME presses and gateway invocations — each
+  clearing the log the other was waiting on. A benchmark that can be started
+  twice by accident will be.
+- **`start_package` is honoured.** §14.1's robustness tier expresses "same task,
+  different starting screen" through that field, and it was null on every
+  robustness task with the information only in prose. The runner would have run
+  each `DIFFERENT_START_SCREEN` variant *from the launcher* — the unperturbed
+  condition — and scored it as perturbed.
+
 ### Results
 
-*Filled in as passes complete; see the CSVs for the authoritative rows.*
+*Filled in as passes complete; `bench/results/E8-core-*.csv` are authoritative.*
 
 ---
 
