@@ -2672,6 +2672,80 @@ correct pruning or over-pruning is unmeasured (**E34**).
 
 ---
 
+## E35 — The compiler and the replayer disagreed, so the store could not grow
+
+*2026-08-19 · found while checking what arm D would be able to replay*
+
+### The symptom nobody would report
+
+`open the camera` had succeeded **cleanly three times** — `SUCCESS`, one step,
+`pre_ok`, `post_ok`, no heal — and **no skill had compiled**. After dozens of
+successful runs across the session the store still held the same two skills it
+started with, and nothing anywhere had errored.
+
+### Cause
+
+`AxonRuntime.compile` asked *"is this goal a further example of a skill I already
+have?"* with a local helper that compared only the **first word** of the stored
+pattern:
+
+```kotlin
+utterance.lowercase().contains(literal.split(" ").first())
+```
+
+`"open whatsapp"` reduces to `"open"`, so any goal containing that word matched.
+Each camera success was therefore routed into `refine(open_whatsapp,
+cameraTrace)` rather than compiling a new skill.
+
+Meanwhile `match()` — the predicate that decides what to *replay* — uses
+`GoalMatcher`, which is far stricter and would never have confused the two.
+**Two definitions of "does this goal correspond to this skill", and the loose one
+governed learning.**
+
+### Why it mattered more than a missing skill
+
+**It bounded C1′ at whatever the store already contained.** No second launch
+skill could ever exist. The project's central claim is that the system gets
+faster the more it is used; this made "used more" stop producing "knows more"
+after the first skill in any verb family — and the symptom, a store that does not
+grow, is indistinguishable from a user who simply has not repeated a task yet.
+
+**It corrupted provenance.** The camera traces were absorbed into
+`open_whatsapp.sourceTraces`, a field the model documents as *"provenance for the
+evaluation"*. The skill cited traces of a different task as its own evidence — a
+research-integrity problem, not merely a product one, and one that would have
+survived into any table built from `source_traces`.
+
+### Why it survived
+
+Nothing broke. `refine` kept the WhatsApp step, replay kept launching WhatsApp,
+every test stayed green, and the audit log looked correct. The only observable
+consequence was an absence.
+
+### Fix
+
+Compile-time matching now asks `GoalMatcher`, because the two questions are the
+same question. A second, looser definition is not an optimisation; it is a second
+answer to a question that must have one.
+
+### The pattern this makes a finding
+
+Third instance this session of **two mechanisms that must agree, and do not**:
+
+| id | the two mechanisms | how they disagreed |
+|---|---|---|
+| E31 | screen grammar ⟷ precondition gate | grammar grounded `value`, left `by` free |
+| E33 | screen grammar ⟷ precondition gate | grammar emitted trimmed labels, gate matched raw |
+| **E35** | **skill compiler ⟷ skill matcher** | **compiler compared one word, matcher compared the pattern** |
+
+All three were silent, none broke a test, and each was found by asking a question
+the code could not answer about itself. That recurrence is worth a paragraph in
+the paper: in a system whose reliability rests on *several independent
+mechanisms agreeing*, the agreement itself is the thing most likely to be wrong,
+and it is exactly what no single mechanism's tests can check.
+
+---
+
 ## Open measurements
 
 Required before publication. Listed here so gaps are visible rather than
