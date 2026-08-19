@@ -98,7 +98,23 @@ public object BenchCorpus {
             tier = BenchTier.CORE,
             goal = "open the camera",
             initialCondition = InitialCondition(setup = listOf("Start on the home screen")),
-            successOracle = listOf(PostCondition(TEXT_MATCHES, "camera")),
+            // `app_foreground`, not `text_matches("camera")`.
+            //
+            // The text oracle was **satisfied by the initial state**: the
+            // launcher shows a "Camera" icon, so the task passed on the home
+            // screen with the agent having done nothing. Caught by auditing
+            // every oracle against a real home-screen dump before trusting the
+            // corpus (`tools/audit-oracles.sh`) -- it was the only one of the
+            // ten that was defective, and it would have contributed a free
+            // success to every arm equally, inflating absolute TSR while
+            // leaving comparisons between arms intact. That is the worst shape
+            // for a benchmark defect: it does not disturb the ablation, so
+            // nothing in the results would have looked wrong.
+            //
+            // The package is resolved from the device's own IMAGE_CAPTURE
+            // default rather than guessed; two camera packages are installed
+            // and only this one launches.
+            successOracle = listOf(PostCondition(APP_FOREGROUND, "com.transsion.camera")),
             optimalSteps = 1,
         ),
 

@@ -54,7 +54,7 @@ fi
 trap 'rmdir "$LOCK" 2>/dev/null' EXIT INT TERM
 
 mkdir -p "$(dirname "$OUT")"
-[ -f "$OUT" ] || echo "task,config,attempted_at,outcome,oracle_pass,wall_ms,llm_calls,steps,killed,detail" > "$OUT"
+[ -f "$OUT" ] || echo "task,config,attempted_at,outcome,oracle_pass,wall_ms,agent_ms,llm_calls,steps,killed,detail" > "$OUT"
 
 have_result() { cut -d, -f1 "$OUT" | grep -qx "$1"; }
 
@@ -135,7 +135,25 @@ run_task() {
   t0=$(date +%s%3N)
 
   adb shell "am start-foreground-service -n $SVC -a dev.axon.action.RUN \
-    --es goal '$goal' --es config $CONFIG" >/dev/null 2>&1
+    --es goal '$goal' --es config $CONFIG${MODEL:+ --es model $MODEL}" </dev/null >/dev/null 2>&1
+
+  # The gateway refuses a second concurrent task ("a task is already running"),
+  # and silently -- from the caller's side an ignored request looks identical to
+  # an accepted one. Without this check the timer would measure the tail of a
+  # PREVIOUS task and report it as this one's: that is exactly what produced a
+  # 31 s wall clock for a run the agent itself measured at 454 s.
+  local started=0 t_wait
+  t_wait=$(date +%s%3N)
+  while [ $(( $(date +%s%3N) - t_wait )) -lt 20000 ]; do
+    if adb logcat -d </dev/null 2>/dev/null | grep -q "AxonAgent: run '"; then started=1; break; fi
+    if adb logcat -d </dev/null 2>/dev/null | grep -q "already running; ignoring"; then break; fi
+    sleep 2
+  done
+  if [ "$started" != 1 ]; then
+    echo "    REFUSED: the gateway did not start '$id' (busy or crashed); recorded, not timed" >&2
+    echo "$id,$CONFIG,$(date -Iseconds),NOT_STARTED,,,,,0,\"gateway did not accept the request\"" >> "$OUT"
+    return
+  fi
 
   local deadline=$(( t0 + TIMEOUT_S * 1000 ))
   while :; do
@@ -155,7 +173,9 @@ run_task() {
   local fg; fg=$(foreground_pkg)
 
   local pass=1 detail=""
-  while IFS=$'\t' read -r otype ovalue; do
+  # FD 4: the outer task loop owns FD 3, and nesting the same descriptor
+  # would have this loop consume the task list.
+  while IFS=$'\t' read -r -u 4 otype ovalue; do
     [ -z "$otype" ] && continue
     if check_oracle "$otype" "$ovalue" "$xml" "$fg"; then
       detail="${detail}${otype}:ok;"
@@ -163,7 +183,7 @@ run_task() {
       detail="${detail}${otype}:FAIL;"
       pass=0
     fi
-  done < <(python3 -c "
+  done 4< <(python3 -c "
 import json,sys
 for o in json.loads(sys.argv[1]): print(o['type']+'\t'+o['value'])
 " "$oracle_json")
@@ -171,34 +191,43 @@ for o in json.loads(sys.argv[1]): print(o['type']+'\t'+o['value'])
   # AXON's own numbers, for context only -- never used to decide pass/fail.
   # Taken from the TASK_END marker, which is emitted on every path including a
   # clean replay; the database only has a row when the task was PLANNED.
-  local llm=0 steps=0 endline
+  local llm=0 steps=0 agent_ms=0 endline
   endline=$(adb logcat -d 2>/dev/null | grep "AxonGateway.*TASK_END" | tail -1)
   if [ -n "$endline" ]; then
     outcome=$(echo "$endline" | sed -nE 's/.*outcome=([A-Z_]+).*/\1/p')
     llm=$(echo "$endline" | sed -nE 's/.*llm=([0-9]+).*/\1/p')
     steps=$(echo "$endline" | sed -nE 's/.*steps=([0-9]+).*/\1/p')
+    agent_ms=$(echo "$endline" | sed -nE 's/.*ms=([0-9]+).*/\1/p')
     [ -z "$llm" ] && llm=0
     [ -z "$steps" ] && steps=0
+    [ -z "$agent_ms" ] && agent_ms=0
   fi
   local _unused
   [ "$killed" = 1 ] && outcome="PROCESS_KILLED"
 
-  echo "$id,$CONFIG,$(date -Iseconds),$outcome,$pass,$wall,$llm,$steps,$killed,\"$detail\"" >> "$OUT"
+  echo "$id,$CONFIG,$(date -Iseconds),$outcome,$pass,$wall,$agent_ms,$llm,$steps,$killed,\"$detail\"" >> "$OUT"
   printf '  %-24s oracle=%s  outcome=%-16s %6sms  llm=%s\n' "$id" "$pass" "$outcome" "$wall" "$llm"
 }
 
 # --- main --------------------------------------------------------------------
 echo "AXON-Bench: config=$CONFIG tier=$TIER -> $OUT"
-while IFS=$'\t' read -r id goal oracle conf start; do
+# Read on FD 3, not stdin.
+#
+# `adb` consumes stdin, so with the task list on stdin the first invocation
+# inside the loop swallowed every remaining line and the pass ended after
+# exactly one task -- reporting success, having silently skipped eight. It cost
+# three confusing restarts to find, because "loop ran once then exited cleanly"
+# looks like a finished run, not a bug.
+while IFS=$'\t' read -r -u 3 id goal oracle conf start; do
   [ -n "$ONLY" ] && [[ ",$ONLY," != *",$id,"* ]] && continue
   if have_result "$id"; then echo "  $id (already recorded, skipping)"; continue; fi
   if [ "$conf" = "True" ]; then
     echo "  $id -- requires confirmation (§16); not runnable unattended, recorded as GATED"
-    echo "$id,$CONFIG,$(date -Iseconds),GATED_CONFIRMATION,,,,,0,\"irreversible action; §16 requires the user to approve\"" >> "$OUT"
+    echo "$id,$CONFIG,$(date -Iseconds),GATED_CONFIRMATION,,,,,,0,\"irreversible action; §16 requires the user to approve\"" >> "$OUT"
     continue
   fi
   run_task "$id" "$goal" "$oracle" "$start"
-done < <(python3 -c "
+done 3< <(python3 -c "
 import json,sys
 tier=sys.argv[2]
 for t in json.load(open(sys.argv[1])):
