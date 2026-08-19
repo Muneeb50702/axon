@@ -56,7 +56,28 @@ trap 'rmdir "$LOCK" 2>/dev/null' EXIT INT TERM
 mkdir -p "$(dirname "$OUT")"
 [ -f "$OUT" ] || echo "task,config,attempted_at,outcome,oracle_pass,wall_ms,agent_ms,llm_calls,steps,killed,detail" > "$OUT"
 
-have_result() { cut -d, -f1 "$OUT" | grep -qx "$1"; }
+# A task is "done" unless its only outcomes so far were OS kills and we were
+# asked to retry those.
+#
+# PROCESS_KILLED is a LOST SAMPLE, not a task failure. E6b established that
+# system_server reaps the app in batches and that survival is a matter of sweep
+# overlap rather than anything the agent did, so scoring a kill as a failure
+# blames the agent for the platform. Retries APPEND a new row rather than
+# replacing the old one, so the kill count stays in the record and the coverage
+# cost is reportable instead of quietly rewritten.
+have_result() {
+  local rows
+  rows=$(awk -F, -v t="$1" '$1==t {print $4}' "$OUT")
+  [ -z "$rows" ] && return 1
+  if [ "${RETRY_KILLED:-0}" = "1" ]; then
+    # Retry only while every attempt so far was killed.
+    echo "$rows" | grep -qv "PROCESS_KILLED" && return 0
+    local n; n=$(echo "$rows" | grep -c "PROCESS_KILLED")
+    [ "$n" -ge "${MAX_KILL_RETRIES:-3}" ] && return 0
+    return 1
+  fi
+  return 0
+}
 
 # --- external oracle ---------------------------------------------------------
 dump_ui() {

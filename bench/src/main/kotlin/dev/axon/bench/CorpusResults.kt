@@ -89,9 +89,31 @@ object CorpusResults {
         return out
     }
 
+    /**
+     * The attempt that counts, per task: the last non-killed one if any exists.
+     *
+     * `PROCESS_KILLED` is a **lost sample, not a task failure**. E6b showed the
+     * OS reaps the app in batches and that survival is sweep overlap rather than
+     * anything the agent did, so scoring a kill as a failure attributes a
+     * platform property to the model. A task retried until it completed is
+     * scored on the completion; a task killed on every attempt has **no score**
+     * and is `skipped`, which removes it from the denominator rather than
+     * counting it wrong in either direction.
+     *
+     * Every attempt stays in the CSV. This chooses what to score; it does not
+     * edit the record, and [killAttempts] reports what the coverage cost was.
+     */
+    fun scored(rows: List<Row>): List<Row> =
+        rows.groupBy { it.task }.values.map { attempts ->
+            attempts.lastOrNull { it.outcome != "PROCESS_KILLED" } ?: attempts.last()
+        }
+
+    /** How many attempts the OS killed, across every task. */
+    fun killAttempts(rows: List<Row>): Int = rows.count { it.killed }
+
     fun scores(csv: File): List<TaskScore> {
         val byId = BenchCorpus.ALL.associateBy { it.id }
-        return parse(csv).mapNotNull { row ->
+        return scored(parse(csv)).mapNotNull { row ->
             val task = byId[row.task] ?: return@mapNotNull null
             TaskScore(
                 task = task,
@@ -112,7 +134,10 @@ object CorpusResults {
                 ),
                 // The external oracle, not the agent's opinion of itself.
                 oraclePassed = row.oraclePass == true,
-                skipped = row.gated,
+                // Gated tasks were never attempted (§16); tasks the OS killed on
+                // every attempt have no measurement. Both leave the denominator
+                // rather than being scored as failures.
+                skipped = row.gated || row.outcome == "PROCESS_KILLED",
             )
         }
     }
@@ -143,6 +168,7 @@ object RunCorpusReport {
                 println("missing: $path"); continue
             }
             val rows = CorpusResults.parse(file)
+            val kills = CorpusResults.killAttempts(rows)
             val scores = CorpusResults.scores(file)
             val config = rows.firstOrNull()?.config ?: "?"
             val m = BenchMetrics.of(config, scores)
@@ -151,7 +177,9 @@ object RunCorpusReport {
             println("── ${file.name}  (config $config) " + "─".repeat(40))
             println(m.render())
             println("  gated by §16 (never attempted) : ${rows.count { it.gated }}")
-            println("  killed mid-task by the OS      : ${rows.count { it.killed }}")
+            println("  attempts killed by the OS      : $kills of ${rows.size}")
+            println("  tasks with no surviving attempt: " +
+                CorpusResults.scored(rows).count { it.outcome == "PROCESS_KILLED" })
             println()
             println("  " + "task".padEnd(24) + "oracle".padEnd(9) + "outcome".padEnd(18) +
                 "wall".padEnd(10) + "llm")
