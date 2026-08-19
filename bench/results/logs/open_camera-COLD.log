@@ -1,0 +1,5 @@
+--------- beginning of main
+08-19 12:47:22.292 28198 28219 I AxonAgent: run 'open the camera' under config COLD (skillReplay=false)
+08-19 12:47:22.635 28198 28219 I AxonAgent: E33 grounding: LaunchCollapsed
+08-19 12:48:40.184 28198 28219 I AxonAgent: E22b trace write: 1 step(s) in 10 ms
+08-19 12:48:40.287 28198 28198 I AxonGateway: TASK_END utterance='open the camera' config=COLD outcome=SUCCESS steps=1 llm=1 ms=77881

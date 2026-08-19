@@ -1,0 +1,7 @@
+task,config,attempted_at,outcome,oracle_pass,wall_ms,agent_ms,llm_calls,steps,killed,detail,grounding
+open_whatsapp,COLD,2026-08-19T12:40:16+05:00,PROCESS_KILLED,0,53026,,,,1,"app_foreground:FAIL;","LaunchCollapsed x1 "
+battery_level,COLD,2026-08-19T12:47:18+05:00,ESCALATED,0,412082,405169,5,5,0,"app_foreground:FAIL;text_matches:FAIL;","ScreenGrounded x5 "
+open_camera,COLD,2026-08-19T12:48:49+05:00,SUCCESS,1,78557,77881,1,1,0,"app_foreground:ok;","LaunchCollapsed x1 "
+toggle_wifi,COLD,2026-08-19T12:50:28+05:00,PROCESS_KILLED,0,89000,,,,1,"app_foreground:FAIL;node_present:FAIL;state[Wi-Fi is actually enabled]:FAIL(got=0);","ScreenGrounded x1 "
+find_setting,COLD,2026-08-19T12:57:09+05:00,ESCALATED,0,391570,386587,5,5,0,"app_foreground:FAIL;text_matches:FAIL;","ScreenGrounded x5 "
+set_alarm,COLD,2026-08-19T13:00:35+05:00,PROCESS_KILLED,0,195863,,,,1,"text_matches:FAIL;node_absent:ok;","ScreenGrounded x3 "

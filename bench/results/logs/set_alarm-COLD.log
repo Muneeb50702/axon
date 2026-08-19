@@ -1,0 +1,5 @@
+--------- beginning of main
+08-19 12:57:13.147 30870 30914 I AxonAgent: run 'set an alarm for 7 am' under config COLD (skillReplay=false)
+08-19 12:57:13.493 30870 30914 I AxonAgent: E33 grounding: ScreenGrounded(labels=17, paired=true)
+08-19 12:58:43.300 30870 30914 I AxonAgent: E33 grounding: ScreenGrounded(labels=1, paired=true)
+08-19 12:59:55.092 30870 30914 I AxonAgent: E33 grounding: ScreenGrounded(labels=24, paired=true)
