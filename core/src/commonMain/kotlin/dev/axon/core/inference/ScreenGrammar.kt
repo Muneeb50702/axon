@@ -107,6 +107,24 @@ public object ScreenGrammar {
                 val label = element.label ?: return@mapNotNull null
                 val trimmed = label.trim()
                 if (trimmed.isEmpty() || label.length > MAX_LABEL_LENGTH) return@mapNotNull null
+
+                // A label that cannot be written into GBNF faithfully is not
+                // offered at all — **E33, second form**.
+                //
+                // `escape` maps newline/tab/carriage-return to a space and drops
+                // control characters, so a label containing them would be offered
+                // in a shape the gate cannot match: exactly E33's defect reached
+                // through a different character. Found by the seam property in
+                // `GrammarGateAgreementTest`, not by hand.
+                //
+                // Dropping the element makes it unnameable, which is an honest
+                // and already-documented cost — `MAX_LABELS` and
+                // `MAX_LABEL_LENGTH` do the same, and the element stays visible
+                // in the prompt. Offering a mangled value instead guarantees a
+                // target that cannot resolve and a wasted ~80 s planning step.
+                if (label.any { it == '\n' || it == '\r' || it == '\t' || it.code < 0x20 || it.code == 0x7F }) {
+                    return@mapNotNull null
+                }
                 // Provenance unknown — an element built directly rather than
                 // projected from a tree. Fall back to the weaker grounding
                 // rather than guessing a `by` that may not resolve.
