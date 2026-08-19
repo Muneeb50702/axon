@@ -69,6 +69,23 @@ model calls and **never attempted the task** — it tapped an unrelated element,
 tapped Back, and escalated (E24c). Composition here is not making a slow task
 faster; it is the difference between a task that completes and one that does not.
 
+**The benchmark corpus has now been run** (E8), core tier, both arms, with
+success decided externally from `dumpsys` and `uiautomator dump` rather than from
+AXON's own report:
+
+| task | arm C (no reuse) | arm D (reuse) |
+|---|---|---|
+| `open whatsapp` | 72.3 s / 1 call | **2.1 s / 0 calls** |
+| `open the camera` | 78.6 s / 1 call | **4.1 s / 0 calls** |
+| four navigation tasks | fail | fail |
+
+The corpus splits where the method predicts: **both successes are launch goals
+and both cost one model call**, because two decisions — which app, and when the
+task is done — are answered outside the model. Everything requiring unaided
+navigation failed. Reuse changed what the learned tasks *cost*, not which tasks
+succeed; that is C1′ stated exactly, and it is a cost mechanism on this tier
+rather than a capability one.
+
 | phase | scope | state |
 |---|---|---|
 | 0 | KMP module graph, §9 interfaces, §10 schemas, §10.6 grammar, CI | ✅ done |
@@ -78,7 +95,7 @@ faster; it is the difference between a task that completes and one that does not
 | 4 | Verifier + self-healing — **C2** | ◐ verifier + per-step repair done; the control loop's recovery is bounded at 100% / 0% (E9) — the **device** rate still needs the model (E9b) |
 | 5 | Skill compiler + replay — **C1′** | ✅ done, replay confirmed on device (E17, E22d, E23) |
 | 6 | Gateway, SQLite persistence, §16 confirmation + audit UI | ✅ done (D11, E22, E28) |
-| 7 | AXON-Bench + ablation matrix — **C3/C5** | ◐ corpus, metrics and harness built; grammar + skill-replay switches have device paths (E4b, E24c), verifier switch does not; **the corpus has not been run through any arm** |
+| 7 | AXON-Bench + ablation matrix — **C3/C5** | ◐ **core tier run through arms C and D on device (E8)**; robustness and long-horizon tiers not run; verifier switch still has no device path |
 | 8 | Hardening, thesis, defence | |
 
 **235 tests, 0 failures, none needing a device.** Everything above the
