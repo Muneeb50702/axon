@@ -105,15 +105,31 @@ PY
 }
 
 # --- driver ------------------------------------------------------------------
+# reset_device [start-package]
+#
+# Every task starts from the launcher unless the corpus says otherwise.
+# `start_package` is how §14.1's robustness tier expresses "same task, different
+# starting screen"; ignoring it would run those variants from the launcher --
+# the same condition as the unperturbed task -- and score them as though a
+# perturbation had been applied.
 reset_device() {
+  local start="${1:-}"
   adb shell input keyevent KEYCODE_HOME >/dev/null 2>&1
-  sleep 3
+  sleep 2
+  if [ -n "$start" ] && [ "$start" != "null" ]; then
+    adb shell monkey -p "$start" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
+    sleep 4
+    local fg; fg=$(foreground_pkg)
+    if [ "$fg" != "$start" ]; then
+      echo "    WARNING: wanted $start in front, got $fg -- perturbation not applied" >&2
+    fi
+  fi
 }
 
 run_task() {
-  local id="$1" goal="$2" oracle_json="$3"
+  local id="$1" goal="$2" oracle_json="$3" start="${4:-}"
 
-  reset_device
+  reset_device "$start"
   adb logcat -c >/dev/null 2>&1
   local t0 killed=0 outcome="NONE"
   t0=$(date +%s%3N)
@@ -173,7 +189,7 @@ for o in json.loads(sys.argv[1]): print(o['type']+'\t'+o['value'])
 
 # --- main --------------------------------------------------------------------
 echo "AXON-Bench: config=$CONFIG tier=$TIER -> $OUT"
-while IFS=$'\t' read -r id goal oracle conf; do
+while IFS=$'\t' read -r id goal oracle conf start; do
   [ -n "$ONLY" ] && [[ ",$ONLY," != *",$id,"* ]] && continue
   if have_result "$id"; then echo "  $id (already recorded, skipping)"; continue; fi
   if [ "$conf" = "True" ]; then
@@ -181,13 +197,15 @@ while IFS=$'\t' read -r id goal oracle conf; do
     echo "$id,$CONFIG,$(date -Iseconds),GATED_CONFIRMATION,,,,,0,\"irreversible action; §16 requires the user to approve\"" >> "$OUT"
     continue
   fi
-  run_task "$id" "$goal" "$oracle"
+  run_task "$id" "$goal" "$oracle" "$start"
 done < <(python3 -c "
 import json,sys
 tier=sys.argv[2]
 for t in json.load(open(sys.argv[1])):
     if tier!='all' and t['tier']!=tier: continue
-    print('\t'.join([t['id'], t['goal'], json.dumps(t['success_oracle']), str(t.get('requires_confirmation',False))]))
+    ic = t.get('initial_condition') or {}
+    print('\t'.join([t['id'], t['goal'], json.dumps(t['success_oracle']),
+                     str(t.get('requires_confirmation',False)), ic.get('start_package') or '']))
 " "$CORPUS" "$TIER")
 
 echo

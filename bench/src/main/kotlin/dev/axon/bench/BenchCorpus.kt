@@ -230,11 +230,13 @@ public object BenchCorpus {
             "open_whatsapp_from_settings",
             Perturbation.DIFFERENT_START_SCREEN,
             listOf("Start with Settings in the foreground, not the launcher"),
+            startPackage = "com.android.settings",
         ),
         core("toggle_wifi").perturbed(
             "toggle_wifi_from_whatsapp",
             Perturbation.DIFFERENT_START_SCREEN,
             listOf("Start with WhatsApp in the foreground"),
+            startPackage = "com.whatsapp",
         ),
         core("set_alarm").perturbed(
             "set_alarm_with_notification",
@@ -364,15 +366,33 @@ public object BenchCorpus {
 
     private fun core(id: String) = CORE.first { it.id == id }
 
-    /** Same task, same oracle, one perturbation. */
+    /**
+     * Same task, same oracle, one perturbation.
+     *
+     * [startPackage] populates the field of the same name, which
+     * [InitialCondition] documents as first-class *precisely* because the
+     * robustness tier varies it. It was left null on every robustness task, so
+     * the only record of "start with Settings in front" was an English sentence
+     * in [setup] — readable by a person and useless to a harness.
+     *
+     * The device runner (E8) resets to the launcher and would therefore have run
+     * every `DIFFERENT_START_SCREEN` variant from the launcher: the same
+     * condition as the unperturbed task, scored as though it were perturbed. A
+     * robustness tier that silently measures no perturbation is worse than not
+     * having one, because it reports a number.
+     */
     private fun BenchTask.perturbed(
         newId: String,
         how: Perturbation,
         setup: List<String>,
+        startPackage: String? = null,
     ) = copy(
         id = newId,
         tier = BenchTier.ROBUSTNESS,
         perturbation = how,
-        initialCondition = initialCondition.copy(setup = initialCondition.setup + setup),
+        initialCondition = initialCondition.copy(
+            startPackage = startPackage ?: initialCondition.startPackage,
+            setup = initialCondition.setup + setup,
+        ),
     )
 }
