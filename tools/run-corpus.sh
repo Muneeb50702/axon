@@ -40,6 +40,19 @@ ONLY="${ONLY:-}"
 TIMEOUT_S="${TIMEOUT_S:-660}"
 OUT="${OUT:-bench/results/E8-corpus-${CONFIG}.csv}"
 
+# One runner at a time. Two concurrent passes drive the same phone and the same
+# results file, interleaving `logcat -c`, HOME presses and gateway invocations
+# -- which is exactly what happened once, producing a run that appeared to stall
+# for twenty minutes because each process kept clearing the log the other was
+# waiting on. A benchmark that can be started twice by accident will be.
+LOCK="${LOCK:-/tmp/axon-corpus.lock}"
+if ! mkdir "$LOCK" 2>/dev/null; then
+  echo "another corpus run holds $LOCK -- refusing to start a second." >&2
+  echo "if that is stale: rmdir $LOCK" >&2
+  exit 3
+fi
+trap 'rmdir "$LOCK" 2>/dev/null' EXIT INT TERM
+
 mkdir -p "$(dirname "$OUT")"
 [ -f "$OUT" ] || echo "task,config,attempted_at,outcome,oracle_pass,wall_ms,llm_calls,steps,killed,detail" > "$OUT"
 
