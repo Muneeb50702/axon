@@ -1,0 +1,4 @@
+--------- beginning of main
+08-19 14:48:16.082 13326 13347 I AxonAgent: run 'find the display settings' under config D (skillReplay=true)
+08-19 14:48:16.459 13326 13347 I AxonAgent: E33 grounding: ScreenGrounded(labels=17, paired=true)
+08-19 14:49:32.122 13326 13347 I AxonAgent: E33 grounding: ScreenGrounded(labels=1, paired=true)

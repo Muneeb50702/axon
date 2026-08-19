@@ -2632,6 +2632,52 @@ Worth stating plainly in the paper, because the opposite is the natural
 assumption: constrained decoding removes a failure class, and this corpus shows
 that class was not the binding constraint on task success for this model.
 
+### Arm C vs arm D — the comparison that isolates skill compilation
+
+*`bench/results/E8-core-D.csv`, same corpus, same device, same day*
+
+`RunConfig` switches **only** skill reuse, so this pair is §14.3's C-vs-D row and
+nothing else differs.
+
+| task | arm C (no reuse) | arm D (reuse) | change |
+|---|---|---|---|
+| `open whatsapp` | PASS 72.3 s / **1 call** | PASS **2.1 s / 0 calls** | **35× faster** |
+| `open the camera` | PASS 78.6 s / **1 call** | PASS **4.1 s / 0 calls** | **19× faster** |
+| `set an alarm` | fail 421 s / 6 | fail 452 s / 6 | — |
+| `navigate to Liberty Market` | fail 284 s / 4 | fail 325 s / 4 | — |
+| `battery percentage` | fail 412 s / 5 | killed | — |
+| `find display settings` | fail 392 s / 5 | killed | — |
+| `turn on wifi` | killed | fail 430 s / 6 | — |
+| `add calendar event` | killed | killed | — |
+| | **TSR 2/6 = 33%** · 22 model calls | **TSR 2/5 = 40%** · 16 model calls | |
+
+### What this does and does not show
+
+**Skill reuse changed what the learned tasks cost, not which tasks succeed.**
+
+That is C1′ stated exactly. Replay can only serve what was already learned, so it
+cannot rescue a task the planner never completed — and the corpus's other six
+tasks were never completed, so there was nothing to compile. The mechanism did
+what it claims: on the two tasks it could serve, **1 model call → 0** and
+**72–79 s → 2–4 s**.
+
+**The TSR difference is not evidence of anything.** 33% → 40% comes from
+different denominators — different tasks lost every attempt to an OS kill — and
+the *same two tasks* passed in both arms. Reading an improvement into it would be
+exactly the error the coverage line exists to prevent.
+
+**The honest headline is the pair, not the ratio:**
+
+> On tasks it had learned, reuse cost **zero model calls** and ran **19–35×
+> faster**. On tasks the planner could not complete, it changed nothing, because
+> there was nothing to replay.
+
+That framing also answers the obvious objection. A reviewer will say *"so it is a
+cache"* — and over this corpus, that is close to fair: the tasks reuse served
+were tasks the planner could already do. The categorical claim (E24c: composition
+making an *impossible* task possible) rests on the compound goal, not on this
+tier, and the two should not be conflated.
+
 ### Coverage, not just rate
 
 **5 of 13 attempts were terminated by the OS**, and two tasks lost every attempt.

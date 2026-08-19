@@ -1,0 +1,3 @@
+--------- beginning of main
+08-19 14:39:04.616 10561 11460 I AxonAgent: run 'open whatsapp' under config D (skillReplay=true)
+08-19 14:39:05.854 10561 10561 I AxonGateway: TASK_END utterance='open whatsapp' config=D outcome=SUCCESS steps=1 llm=0 ms=1225

@@ -1,0 +1,10 @@
+--------- beginning of main
+08-19 14:40:57.869 13326 13347 I AxonAgent: run 'turn on wifi' under config D (skillReplay=true)
+08-19 14:40:58.252 13326 13347 I AxonAgent: E33 grounding: ScreenGrounded(labels=17, paired=true)
+08-19 14:42:13.060 13326 13347 I AxonAgent: E33 grounding: ScreenGrounded(labels=1, paired=true)
+08-19 14:43:16.751 13326 13347 I AxonAgent: E33 grounding: ScreenGrounded(labels=24, paired=true)
+08-19 14:44:43.406 13326 13347 I AxonAgent: E33 grounding: ScreenGrounded(labels=1, paired=true)
+08-19 14:45:48.734 13326 13347 I AxonAgent: E33 grounding: ScreenGrounded(labels=1, paired=true)
+08-19 14:46:56.489 13326 13347 I AxonAgent: E33 grounding: ScreenGrounded(labels=1, paired=true)
+08-19 14:48:01.368 13326 13347 I AxonAgent: E22b trace write: 6 step(s) in 37 ms
+08-19 14:48:01.387 13326 13326 I AxonGateway: TASK_END utterance='turn on wifi' config=D outcome=BUDGET_EXHAUSTED steps=6 llm=6 ms=423459

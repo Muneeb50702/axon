@@ -1,0 +1,4 @@
+--------- beginning of main
+08-19 14:58:32.781 16843 16894 I AxonAgent: run 'add a calendar event called dentist tomorrow' under config D (skillReplay=true)
+08-19 14:58:33.163 16843 16894 I AxonAgent: E33 grounding: ScreenGrounded(labels=17, paired=true)
+08-19 14:59:57.092 16843 16894 I AxonAgent: E33 grounding: ScreenGrounded(labels=38, paired=true)

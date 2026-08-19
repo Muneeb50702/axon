@@ -1,3 +1,4 @@
 --------- beginning of main
-08-19 14:38:31.979 10561 11460 I AxonAgent: run 'open the camera' under config D (skillReplay=true)
-08-19 14:38:32.973 10561 10561 I AxonGateway: TASK_END utterance='open the camera' config=D outcome=SUCCESS steps=1 llm=0 ms=978
+08-19 14:40:41.250 13326 13326 I AxonA11y: AXON accessibility service connected
+08-19 14:40:43.151 13326 13347 I AxonAgent: run 'open the camera' under config D (skillReplay=true)
+08-19 14:40:44.158 13326 13326 I AxonGateway: TASK_END utterance='open the camera' config=D outcome=SUCCESS steps=1 llm=0 ms=976
